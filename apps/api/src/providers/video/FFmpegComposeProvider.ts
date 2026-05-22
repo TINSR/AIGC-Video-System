@@ -13,14 +13,72 @@ import type { Material } from '@shared/types';
 
 const execAsync = promisify(exec);
 
+function formatSrtTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round((seconds - Math.floor(seconds)) * 1000);
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
+}
+
 export class FFmpegComposeProvider implements IFFmpegComposeProvider {
   private ffmpegPath = 'ffmpeg';
   private tempDir = process.env.TEMP || './temp';
 
   constructor() {
-    // 确保临时目录存在
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true });
+    }
+  }
+
+  // 路径解析：将各种形式的 media URL 转为可用的本地路径
+  private resolveLocalMediaPath(url: string): string | null {
+    if (!url || url.trim().length === 0) return null;
+
+    // 已存在的绝对路径
+    if (path.isAbsolute(url) && fs.existsSync(url)) return url;
+
+    // /uploads/xxx — 映射到 cwd/uploads/xxx
+    if (url.startsWith('/uploads/')) {
+      const local = path.resolve(process.cwd(), url.slice(1));
+      return local;
+    }
+
+    // uploads/xxx（无前导 /）— 映射到 cwd/uploads/xxx
+    if (url.startsWith('uploads/')) {
+      const local = path.resolve(process.cwd(), url);
+      return local;
+    }
+
+    // HTTP[S] URL — 暂不支持下载
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return null;
+    }
+
+    // 相对路径
+    const local = path.resolve(process.cwd(), url);
+    return local;
+  }
+
+  // 生成纯色背景 + 字幕的兜底片段
+  private async generateSolidColorClip(
+    duration: number,
+    subtitle: string | undefined,
+    outputPath: string
+  ): Promise<void> {
+    const colorFilter = 'color=c=0x1a1a2e:s=1080x1920:r=25';
+    if (subtitle) {
+      const escapedSubtitle = subtitle
+        .replace(/\\/g, '\\\\')
+        .replace(/:/g, '\\:')
+        .replace(/'/g, "'\\''");
+      await execAsync(
+        `${this.ffmpegPath} -f lavfi -i "${colorFilter}" -t ${duration} -vf "drawtext=text='${escapedSubtitle}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.5:boxborderw=10" -c:v libx264 -pix_fmt yuv420p "${outputPath}" -y`
+      );
+    } else {
+      await execAsync(
+        `${this.ffmpegPath} -f lavfi -i "${colorFilter}" -t ${duration} -c:v libx264 -pix_fmt yuv420p "${outputPath}" -y`
+      );
     }
   }
 
@@ -39,56 +97,44 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
         };
       }
 
-      // 验证第一个片段路径存在
-      for (const clip of clips) {
-        if (!clip.url || clip.url.trim().length === 0) {
-          return {
-            success: false,
-            videoUrl: '',
-            duration: 0,
-            resolution,
-            fileSize: 0,
-            errorMessage: '片段 fileUrl 为空',
-          };
-        }
+      // 确保输出目录存在
+      const outputDir = path.dirname(outputPath);
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
       }
 
-      // 生成片段处理脚本
+      // 生成片段
       const clipFiles: string[] = [];
+      let usedFallback = false;
 
       for (let i = 0; i < clips.length; i++) {
         const clip = clips[i];
         const tempOutput = path.join(this.tempDir, `clip_${i}_${uuidv4()}.mp4`);
+        const resolvedPath = this.resolveLocalMediaPath(clip.url);
+        let clipGenerated = false;
 
-        // 处理单个片段：图片的话生成视频，视频的话裁剪到指定时长
-        if (clip.url.endsWith('.jpg') || clip.url.endsWith('.jpeg') || clip.url.endsWith('.png')) {
-          if (!fs.existsSync(clip.url)) {
-            return {
-              success: false,
-              videoUrl: '',
-              duration: 0,
-              resolution,
-              fileSize: 0,
-              errorMessage: `素材文件不存在：${clip.url}`,
-            };
+        // 尝试使用真实素材
+        if (resolvedPath && fs.existsSync(resolvedPath)) {
+          try {
+            if (resolvedPath.endsWith('.jpg') || resolvedPath.endsWith('.jpeg') || resolvedPath.endsWith('.png')) {
+              await execAsync(`${this.ffmpegPath} -loop 1 -i "${resolvedPath}" -t ${clip.duration} -filter_complex "[0:v]zoompan=z='min(zoom+0.001,1.2)':d=${clip.duration * 25}:s=1080x1920,fps=25[v]" -map "[v]" -c:v libx264 -pix_fmt yuv420p "${tempOutput}" -y`);
+            } else {
+              await execAsync(`${this.ffmpegPath} -i "${resolvedPath}" -t ${clip.duration} -c:v libx264 -c:a aac "${tempOutput}" -y`);
+            }
+            clipGenerated = true;
+          } catch {
+            // 素材处理失败，继续走兜底
           }
-          await execAsync(`${this.ffmpegPath} -loop 1 -i "${clip.url}" -t ${clip.duration} -filter_complex "[0:v]zoompan=z='min(zoom+0.001,1.2)':d=${clip.duration * 25}:s=1080x1920,fps=25[v]" -map "[v]" -c:v libx264 -pix_fmt yuv420p "${tempOutput}" -y`);
-        } else {
-          if (!fs.existsSync(clip.url)) {
-            return {
-              success: false,
-              videoUrl: '',
-              duration: 0,
-              resolution,
-              fileSize: 0,
-              errorMessage: `素材文件不存在：${clip.url}`,
-            };
-          }
-          await execAsync(`${this.ffmpegPath} -i "${clip.url}" -t ${clip.duration} -c:v libx264 -c:a aac "${tempOutput}" -y`);
         }
 
-        // 添加字幕
-        if (clip.subtitle) {
+        // 兜底：纯色背景 + 字幕
+        if (!clipGenerated) {
+          await this.generateSolidColorClip(clip.duration, clip.subtitle, tempOutput);
+          usedFallback = true;
+        }
+
+        // 如果原始 clip 有 subtitle 且用的是真实素材，额外烧录字幕
+        if (clip.subtitle && clipGenerated) {
           const subtitleFile = path.join(this.tempDir, `subtitle_${i}.srt`);
           this.createSubtitleFile(clip.subtitle, clip.duration, subtitleFile);
 
@@ -112,8 +158,8 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
 
       // 添加BGM和语音
       let finalOutput = outputPath;
-      let audioFilters = '';
       let audioInputs = '';
+      let audioFilters = '';
 
       if (bgmUrl) audioInputs += `-i "${bgmUrl}" `;
       if (voiceoverUrl) audioInputs += `-i "${voiceoverUrl}" `;
@@ -142,7 +188,6 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
         fs.unlinkSync(concatenatedOutput);
       }
 
-      // 获取视频信息 — 使用 ffprobe（跨平台），fallback 到 clips 计算
       const duration = await this.getVideoDuration(finalOutput, clips);
       const stats = fs.statSync(finalOutput);
 
@@ -166,7 +211,7 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
   }
 
   async generateFromPlan(input: GenerateFromPlanInput): Promise<FinalComposeOutput> {
-    const { plan, materials, outputPath, bgmUrl, ttsVoice } = input;
+    const { plan, materials, outputPath, bgmUrl } = input;
 
     if (!plan.scenes || plan.scenes.length === 0) {
       return {
@@ -180,36 +225,20 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
     }
 
     // 转换CreativePlan为FFmpeg输入格式
+    // 素材不存在时仍然生成 clip 对象 — compose 会走兜底
     const clips = plan.scenes.map(scene => {
       const material = materials.find(m => m.id === scene.materialId) || materials[0];
-      if (!material || !material.fileUrl) {
-        return null;
-      }
+      const fileUrl = material?.fileUrl ?? '';
       return {
-        url: material.fileUrl,
+        url: fileUrl,
         duration: scene.duration,
         subtitle: scene.subtitle,
       };
-    }).filter(Boolean) as { url: string; duration: number; subtitle?: string }[];
-
-    if (clips.length === 0) {
-      return {
-        success: false,
-        videoUrl: '',
-        duration: 0,
-        resolution: '1080p',
-        fileSize: 0,
-        errorMessage: '无有效素材文件可合成',
-      };
-    }
-
-    // TODO: TTS语音生成（预留占位）
-    let voiceoverUrl: string | undefined = undefined;
+    });
 
     return this.compose({
       clips,
       bgmUrl,
-      voiceoverUrl,
       outputPath,
       resolution: '1080p',
       aspectRatio: '9:16',
@@ -219,7 +248,7 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
   // 创建字幕文件
   private createSubtitleFile(text: string, duration: number, filePath: string): void {
     const srtContent = `1
-00:00:00,000 --> 00:00:${duration.toFixed(3).replace('.', ',')}
+${formatSrtTime(0)} --> ${formatSrtTime(duration)}
 ${text}
 `;
     fs.writeFileSync(filePath, srtContent, 'utf8');
@@ -231,36 +260,33 @@ ${text}
     clips: { duration: number }[]
   ): Promise<number> {
     try {
-      // ffprobe 更可靠且跨平台
       const { stdout } = await execAsync(
         `"${this.ffmpegPath.replace('ffmpeg', 'ffprobe')}" -v error -show_entries format=duration -of csv=p=0 "${filePath}"`
       );
       const parsed = parseFloat(stdout.trim());
       if (!isNaN(parsed) && parsed > 0) return parsed;
     } catch {
-      // ffprobe 失败时使用 ffmpeg stderr 解析
       try {
         const { stderr } = await execAsync(`"${this.ffmpegPath}" -i "${filePath}" -f null -`);
         const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
         if (match) {
           return parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);
         }
-      } catch (e: any) {
-        // ffmpeg 在 -f null 时总是以非零退出码返回，stderr 中仍包含 Duration 信息
-        if (e.stderr) {
-          const match = e.stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+      } catch (e: unknown) {
+        const execError = e as { stderr?: string };
+        if (execError.stderr) {
+          const match = execError.stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
           if (match) {
             return parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);
           }
         }
       }
     }
-    // Fallback: 从 clips 计算
     return clips.reduce((sum, clip) => sum + clip.duration, 0);
   }
 
   // TTS生成语音（预留占位）
-  private async generateVoiceover(text: string, voice: string): Promise<string> {
+  private async generateVoiceover(_text: string, _voice: string): Promise<string> {
     // TODO: 实现TTS语音生成
     return '';
   }

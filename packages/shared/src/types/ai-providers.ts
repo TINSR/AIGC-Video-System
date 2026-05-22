@@ -9,12 +9,12 @@ export type CreativePlanDraft = Omit<CreativePlan, 'id' | 'createdAt' | 'status'
 
 // AiProvider 统一接口
 export interface AiProvider {
-  generateScript(input: ScriptInput): Promise<CreativePlanDraft>;
+  generateCreativePlan(input: CreativePlanInput): Promise<CreativePlanDraft>;
   regenerateScene(input: SceneRegenerateInput): Promise<SceneDraft>;
 }
 
-// MockAiProvider 输入类型
-export interface ScriptInput {
+// AiProvider 输入类型
+export interface CreativePlanInput {
   product: Product;
   materials: Material[];
   style?: "pain_point" | "review" | "scenario" | "discount" | "premium";

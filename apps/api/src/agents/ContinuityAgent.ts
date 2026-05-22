@@ -54,23 +54,47 @@ export class ContinuityAgent implements IContinuityAgent {
       });
     }
 
-    // 2. 检查总时长
+    // 2. 检查总时长 — 比赛要求最终视频不超过 15 秒
     const totalDuration = plan.scenes.reduce((sum, scene) => sum + scene.duration, 0);
     if (totalDuration < 3) {
       warnings.push({
         message: `视频总时长 ${totalDuration} 秒过短`,
         type: 'duration',
-        suggestion: '建议增加分镜，总时长建议 3-15 秒',
+        suggestion: '建议增加分镜，总时长 3-15 秒（比赛要求最终视频不超过 15 秒）',
       });
-    } else if (totalDuration > 60) {
+    } else if (totalDuration > 15) {
       warnings.push({
-        message: `视频总时长 ${totalDuration} 秒过长`,
+        message: `视频总时长 ${totalDuration} 秒，超过 15 秒限制`,
         type: 'duration',
-        suggestion: '建议减少分镜时长，总时长控制在 60 秒以内',
+        suggestion: '比赛要求最终视频不超过 15 秒，请减少分镜时长或合并分镜',
       });
     }
 
-    // 3. 检查转场是否覆盖所有相邻分镜
+    // 3. 检查单个分镜时长
+    for (let i = 0; i < plan.scenes.length; i++) {
+      const scene = plan.scenes[i];
+      if (scene.duration <= 0) {
+        warnings.push({
+          message: `第 ${i + 1} 个分镜时长为 ${scene.duration} 秒，无效`,
+          type: 'duration',
+          suggestion: '请设置合理的分镜时长（建议 2-5 秒，比赛要求最终视频不超过 15 秒）',
+        });
+      } else if (scene.duration > 15) {
+        warnings.push({
+          message: `第 ${i + 1} 个分镜时长 ${scene.duration} 秒，超过 15 秒`,
+          type: 'duration',
+          suggestion: '单个分镜必须在 15 秒以内（比赛要求最终视频不超过 15 秒）',
+        });
+      } else if (scene.duration > 5) {
+        warnings.push({
+          message: `第 ${i + 1} 个分镜时长 ${scene.duration} 秒，偏长`,
+          type: 'duration',
+          suggestion: '单个分镜建议 2-5 秒（比赛要求最终视频不超过 15 秒）',
+        });
+      }
+    }
+
+    // 4. 检查转场是否覆盖所有相邻分镜
     for (let i = 0; i < plan.scenes.length - 1; i++) {
       if (!plan.scenes[i].transition) {
         warnings.push({
@@ -81,7 +105,7 @@ export class ContinuityAgent implements IContinuityAgent {
       }
     }
 
-    // 4. 检查素材 ID 是否存在
+    // 5. 检查素材 ID 是否存在
     for (let i = 0; i < plan.scenes.length; i++) {
       const scene = plan.scenes[i];
       if (scene.materialId) {
@@ -93,24 +117,6 @@ export class ContinuityAgent implements IContinuityAgent {
             suggestion: '请使用已上传的有效素材 ID，或置空 materialId',
           });
         }
-      }
-    }
-
-    // 5. 检查是否有分镜时长异常（0 或超大值）
-    for (let i = 0; i < plan.scenes.length; i++) {
-      const scene = plan.scenes[i];
-      if (scene.duration <= 0) {
-        warnings.push({
-          message: `第 ${i + 1} 个分镜时长为 ${scene.duration} 秒，无效`,
-          type: 'duration',
-          suggestion: '请设置合理的分镜时长（1-15 秒）',
-        });
-      } else if (scene.duration > 30) {
-        warnings.push({
-          message: `第 ${i + 1} 个分镜时长 ${scene.duration} 秒，过长`,
-          type: 'duration',
-          suggestion: '单个分镜建议不超过 15 秒',
-        });
       }
     }
 

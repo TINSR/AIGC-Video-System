@@ -2,8 +2,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
 import { ComplianceAgent } from '../../agents/ComplianceAgent';
 import { ContinuityAgent } from '../../agents/ContinuityAgent';
-import type { ScriptInput, CreativePlanDraft } from '@shared/types/ai-providers';
+import type { CreativePlanInput, CreativePlanDraft } from '@shared/types/ai-providers';
 import type { CreativePlan, Scene, Material, Product } from '@shared/types';
+
+// Day 1 兜底存储（数据库未实现前）
+const planStore = new Map<string, CreativePlan>();
 
 export class CreativePlanService {
   private mockAiProvider: MockAiProvider;
@@ -17,11 +20,11 @@ export class CreativePlanService {
   }
 
   // 生成创意方案
-  async generateCreativePlan(input: ScriptInput): Promise<CreativePlan> {
+  async generateCreativePlan(input: CreativePlanInput): Promise<CreativePlan> {
     const { product, materials } = input;
 
     // 1. 调用MockAiProvider生成创意方案草稿
-    const planDraft = await this.mockAiProvider.generateScript(input);
+    const planDraft = await this.mockAiProvider.generateCreativePlan(input);
 
     // 2. 调用ComplianceAgent检查合规性
     const { complianceWarnings } = await this.complianceAgent.check(planDraft);
@@ -46,6 +49,9 @@ export class CreativePlanService {
         creativePlanId: planId,
       })),
     };
+
+    // 写入内存存储
+    planStore.set(planId, creativePlan);
 
     return creativePlan;
   }
@@ -78,8 +84,16 @@ export class CreativePlanService {
 
     // 检查新分镜的合规性和连贯性
     const tempPlan: CreativePlanDraft = {
-      ...creativePlan,
+      productId: creativePlan.productId,
+      style: creativePlan.style,
+      title: creativePlan.title,
+      hook: creativePlan.hook,
+      adCopy: creativePlan.adCopy,
+      cta: creativePlan.cta,
+      visualBible: creativePlan.visualBible,
       scenes: [sceneDraft],
+      complianceWarnings: [],
+      continuityWarnings: [],
     };
 
     const { complianceWarnings } = await this.complianceAgent.check(tempPlan);
@@ -93,22 +107,39 @@ export class CreativePlanService {
     };
   }
 
-  // 获取创意方案详情
+  // 获取创意方案详情 — 从内存 Map 查询
   async getCreativePlan(id: string): Promise<CreativePlan | null> {
-    // TODO: 实现从数据库查询逻辑
-    return null;
+    return planStore.get(id) ?? null;
   }
 
-  // 更新创意方案
+  // 更新创意方案 — 支持更新 title, hook, adCopy, cta, visualBible, scenes 等字段
   async updateCreativePlan(id: string, data: Partial<CreativePlan>): Promise<CreativePlan | null> {
-    // TODO: 实现数据库更新逻辑
-    return null;
+    const existing = planStore.get(id);
+    if (!existing) return null;
+
+    const allowedFields: (keyof CreativePlan)[] = [
+      'title', 'hook', 'adCopy', 'cta', 'visualBible', 'scenes',
+      'complianceWarnings', 'continuityWarnings',
+    ];
+
+    for (const key of allowedFields) {
+      if (key in data) {
+        (existing as Record<string, unknown>)[key] = data[key];
+      }
+    }
+
+    planStore.set(id, existing);
+    return existing;
   }
 
-  // 批准创意方案
+  // 批准创意方案 — 将 status 改为 approved
   async approveCreativePlan(id: string): Promise<CreativePlan | null> {
-    // TODO: 实现状态更新逻辑
-    return null;
+    const existing = planStore.get(id);
+    if (!existing) return null;
+
+    existing.status = 'approved';
+    planStore.set(id, existing);
+    return existing;
   }
 
   // 数据库未实现前的占位 product

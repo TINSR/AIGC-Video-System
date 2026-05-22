@@ -1,8 +1,8 @@
-import type { AiProvider, ScriptInput, CreativePlanDraft, SceneRegenerateInput, SceneDraft } from '@shared/types/ai-providers';
+import type { AiProvider, CreativePlanInput, CreativePlanDraft, SceneRegenerateInput, SceneDraft } from '@shared/types/ai-providers';
 import type { Product, Material, ScriptStyle, VisualBible } from '@shared/types';
 
 export class MockAiProvider implements AiProvider {
-  async generateScript(input: ScriptInput): Promise<CreativePlanDraft> {
+  async generateCreativePlan(input: CreativePlanInput): Promise<CreativePlanDraft> {
     const { product, materials, style = 'scenario', maxDuration = 15 } = input;
 
     // 根据商品类别返回对应样例

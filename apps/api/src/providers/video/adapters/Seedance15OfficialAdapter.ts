@@ -2,31 +2,27 @@ import type { SeedanceRenderInput, SeedanceRenderOutput, SeedanceTaskStatus } fr
 
 export class Seedance15OfficialAdapter {
   private apiKey?: string;
-  private baseUrl = 'https://api.seedance.ai/v1.5';
 
   constructor(apiKey?: string) {
     this.apiKey = apiKey;
   }
 
-  // Seedance 1.5 官方API渲染接口占位实现
-  async render(input: SeedanceRenderInput): Promise<SeedanceRenderOutput> {
-    // TODO: 实现真实的Seedance API调用
-    // 目前返回pending状态，后续需要实现真实的异步任务逻辑
+  // Seedance 1.5 官方API — 未实现，直接返回 failed 触发 FFmpeg fallback
+  async render(_input: SeedanceRenderInput): Promise<SeedanceRenderOutput> {
     return {
-      taskId: `seedance-${Date.now()}`,
-      status: 'pending',
+      taskId: `seedance-placeholder-${Date.now()}`,
+      status: 'failed',
       progress: 0,
+      errorMessage: 'Seedance 1.5 official adapter not implemented yet, fallback to FFmpeg',
     };
   }
 
-  // Seedance 1.5 官方API任务状态查询接口占位实现
   async getTaskStatus(taskId: string): Promise<SeedanceTaskStatus> {
-    // TODO: 实现真实的Seedance任务状态查询
-    // 目前返回模拟的任务进度
     return {
       taskId,
-      status: 'running',
-      progress: Math.floor(Math.random() * 100),
+      status: 'failed',
+      progress: 0,
+      errorMessage: 'Seedance 1.5 official adapter not implemented yet',
     };
   }
 }
