@@ -4,6 +4,10 @@ import { planStore } from '../../memory-store';
 import type { ApiResponse, GenerationTask, Material } from '@shared/types';
 
 const demoMaterials: Material[] = [
+  // Day 1: 素材为固定 demo fixture。
+  // 生成 CreativePlan 时引用的 material_002/material_003 在 FFmpeg fallback
+  // 会通过 resolveLocalMediaPath + generateSolidColorClip 兜底，不会报错。
+  // 数据库实现后 materials 应随 plan 一起从 store 读取。
   {
     id: 'material_001',
     productId: 'product_001',

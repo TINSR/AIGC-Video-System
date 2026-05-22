@@ -99,7 +99,7 @@ export class CreativePlanService {
 
     return {
       ...sceneDraft,
-      id: uuidv4(),
+      id: sceneId, // 保留原 sceneId，前端后续操作不失效
       creativePlanId: creativePlan.id,
       warnings: [...complianceWarnings.map(w => w.message), ...continuityWarnings.map(w => w.message)],
     };
@@ -147,32 +147,44 @@ export class CreativePlanService {
       if (!vb.productAppearance || vb.productAppearance.trim().length === 0) {
         throw new Error('visualBible.productAppearance 不能为空');
       }
-      if (!vb.mainScenes || vb.mainScenes.length === 0) {
-        throw new Error('visualBible.mainScenes 不能为空');
+      if (!vb.mainScenes || vb.mainScenes.length === 0 || !vb.mainScenes.every((s: string) => s && s.trim().length > 0)) {
+        throw new Error('visualBible.mainScenes 不能为空且每个元素必须是非空字符串');
       }
-      if (!vb.continuityRules || vb.continuityRules.length === 0) {
-        throw new Error('visualBible.continuityRules 不能为空');
+      if (!vb.continuityRules || vb.continuityRules.length === 0 || !vb.continuityRules.every((r: string) => r && r.trim().length > 0)) {
+        throw new Error('visualBible.continuityRules 不能为空且每个元素必须是非空字符串');
       }
       existing.visualBible = vb;
     }
 
-    // scenes — 校验每项关键字段和 creativePlanId 一致性
+    // scenes — 强制校验每个分镜的 Day 1 合同字段
     if (data.scenes) {
       if (!Array.isArray(data.scenes)) {
         throw new Error('scenes 必须是数组');
       }
-      for (const scene of data.scenes) {
-        if (scene.creativePlanId && scene.creativePlanId !== id) {
-          throw new Error(`scene.creativePlanId 必须与方案 id 一致: ${id}`);
+      const requiredString = ['id', 'creativePlanId', 'visualDescription', 'subtitle', 'voiceover', 'seedancePrompt'] as const;
+      for (let i = 0; i < data.scenes.length; i++) {
+        const s = data.scenes[i] as Record<string, unknown>;
+        const prefix = `scenes[${i}]`;
+
+        for (const field of requiredString) {
+          if (typeof s[field] !== 'string' || (s[field] as string).trim().length === 0) {
+            throw new Error(`${prefix}.${field} 必须是非空字符串`);
+          }
         }
-        if (scene.transition && !VALID_TRANSITIONS.has(scene.transition)) {
-          throw new Error(`scene.transition 必须是 cut / fade / zoom 之一，收到: ${scene.transition}`);
+        if (s.creativePlanId !== id) {
+          throw new Error(`${prefix}.creativePlanId 必须与方案 id 一致: ${id}`);
         }
-        if (scene.duration !== undefined && (scene.duration <= 0 || scene.duration > 15)) {
-          throw new Error(`scene.duration 必须在 1-15 秒之间，收到: ${scene.duration}`);
+        if (typeof s.order !== 'number' || s.order < 1) {
+          throw new Error(`${prefix}.order 必须 >= 1，收到: ${s.order}`);
         }
-        if (scene.order !== undefined && (typeof scene.order !== 'number' || scene.order < 1)) {
-          throw new Error(`scene.order 必须 >= 1，收到: ${scene.order}`);
+        if (typeof s.duration !== 'number' || s.duration <= 0 || s.duration > 15) {
+          throw new Error(`${prefix}.duration 必须在 1-15 秒之间，收到: ${s.duration}`);
+        }
+        if (typeof s.transition !== 'string' || !VALID_TRANSITIONS.has(s.transition)) {
+          throw new Error(`${prefix}.transition 必须是 cut / fade / zoom 之一，收到: ${s.transition}`);
+        }
+        if (!Array.isArray(s.warnings)) {
+          throw new Error(`${prefix}.warnings 必须是数组`);
         }
       }
       existing.scenes = data.scenes;
