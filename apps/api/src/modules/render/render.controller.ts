@@ -1,46 +1,7 @@
 import { Request, Response } from 'express';
 import { RenderService } from './render.service';
-import type { ApiResponse, GenerationTask, CreativePlan, Material } from '@shared/types';
-
-// Demo fixture — 数据库未实现前的占位 creativePlan
-const demoPlan: CreativePlan = {
-  id: 'plan_001',
-  productId: 'product_001',
-  status: 'approved',
-  style: 'pain_point',
-  title: '早八也能喝到新鲜果汁',
-  hook: '早上来不及吃水果？',
-  adCopy: '30 秒打一杯新鲜果汁，通勤也能随身带走。',
-  cta: '点击了解便携榨汁杯，让新鲜随身走。',
-  visualBible: {
-    aspectRatio: '9:16',
-    style: 'TikTok 快节奏电商广告',
-    colorTone: '明亮清爽',
-    lighting: '柔和日光',
-    cameraStyle: '手持近景 + 商品特写',
-    productAppearance: '白色便携榨汁杯，透明杯身',
-    mainScenes: ['早晨厨房', '办公室桌面'],
-    continuityRules: ['每个分镜保持同一商品外观', '整体色调保持明亮清爽'],
-  },
-  scenes: [
-    {
-      id: 'scene_001',
-      creativePlanId: 'plan_001',
-      order: 1,
-      duration: 3,
-      visualDescription: '上班族匆忙出门，桌上水果来不及吃',
-      subtitle: '早上来不及吃水果？',
-      voiceover: '早上来不及吃水果？',
-      materialId: 'material_001',
-      seedancePrompt: '9:16 TikTok style commercial, bright morning kitchen, young office worker rushing out',
-      warnings: [],
-      transition: 'zoom',
-    },
-  ],
-  complianceWarnings: [],
-  continuityWarnings: [],
-  createdAt: '2026-05-21T00:00:00.000Z',
-};
+import { planStore } from '../../memory-store';
+import type { ApiResponse, GenerationTask, Material } from '@shared/types';
 
 const demoMaterials: Material[] = [
   {
@@ -61,13 +22,31 @@ export class RenderController {
     this.renderService = new RenderService();
   }
 
-  // 创建渲染任务
+  // 创建渲染任务 — 从共享 planStore 读取真实 CreativePlan
   render = async (req: Request, res: Response<ApiResponse<GenerationTask>>) => {
     try {
       const { id } = req.params;
 
-      // 数据库未实现前使用 demo fixture
-      const creativePlan = id === demoPlan.id ? demoPlan : { ...demoPlan, id, productId: 'prod_default' };
+      const creativePlan = planStore.get(id);
+      if (!creativePlan) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: '创意方案不存在，请先生成或获取方案详情',
+          },
+        });
+      }
+
+      if (creativePlan.status !== 'approved') {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_STATUS',
+            message: `方案状态为 ${creativePlan.status}，需要先 approve 才能渲染`,
+          },
+        });
+      }
 
       const task = await this.renderService.createRenderTask(creativePlan, demoMaterials);
 
@@ -144,7 +123,7 @@ export class RenderController {
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
-          message: '重试任务失败',
+          message: error instanceof Error ? error.message : '重试任务失败',
         },
       });
     }

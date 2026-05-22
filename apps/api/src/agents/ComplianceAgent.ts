@@ -31,11 +31,13 @@ const FORBIDDEN_WORDS = [
   { word: '无效退款', suggestion: '支持7天无理由退换、售后有保障' },
 ];
 
+// 按词长倒序排列，确保"全网第一"先于"第一"匹配
+const SORTED_FORBIDDEN_WORDS = [...FORBIDDEN_WORDS].sort((a, b) => b.word.length - a.word.length);
+
 export class ComplianceAgent implements IComplianceAgent {
   async check(plan: CreativePlanDraft): Promise<{ complianceWarnings: ComplianceWarning[] }> {
     const warnings: ComplianceWarning[] = [];
 
-    // 检查顶层字段
     const topLevelFields = [
       { name: 'title', value: plan.title },
       { name: 'hook', value: plan.hook },
@@ -49,7 +51,6 @@ export class ComplianceAgent implements IComplianceAgent {
       warnings.push(...fieldWarnings);
     }
 
-    // 检查分镜字段
     plan.scenes.forEach((scene, index) => {
       const sceneFields = [
         { name: 'visualDescription', value: scene.visualDescription },
@@ -70,13 +71,27 @@ export class ComplianceAgent implements IComplianceAgent {
 
   private checkText(text: string, field: string, position?: number): ComplianceWarning[] {
     const warnings: ComplianceWarning[] = [];
-    const seenWords = new Set<string>();
+    // 记录已覆盖的字符区间，避免短词在长词命中范围内重复告警
+    const coveredRanges: [number, number][] = [];
 
-    for (const forbidden of FORBIDDEN_WORDS) {
-      if (seenWords.has(forbidden.word)) continue;
-      if (!text.includes(forbidden.word)) continue;
+    for (const forbidden of SORTED_FORBIDDEN_WORDS) {
+      // 检查是否所有出现位置都已被更长词覆盖
+      let allCovered = true;
+      let idx = -1;
+      const word = forbidden.word;
+      while ((idx = text.indexOf(word, idx + 1)) !== -1) {
+        const end = idx + word.length;
+        if (!coveredRanges.some(([s, e]) => s <= idx && end <= e)) {
+          allCovered = false;
+          break;
+        }
+      }
+      if (allCovered) continue;
 
-      // 跳过安全上下文：如"第一次"中的"第一"是日常用语而非绝对化广告词
+      // 检查首次出现即可 — 命中一次就应该告警
+      idx = text.indexOf(word);
+      if (idx === -1) continue;
+
       if (this.isSafeContext(text, forbidden)) continue;
 
       warnings.push({
@@ -86,7 +101,12 @@ export class ComplianceAgent implements IComplianceAgent {
         suggestion: `建议替换为"${forbidden.suggestion}"等中性表达`,
         forbiddenWord: forbidden.word,
       });
-      seenWords.add(forbidden.word);
+
+      // 标记所有出现位置为已覆盖
+      idx = -1;
+      while ((idx = text.indexOf(word, idx + 1)) !== -1) {
+        coveredRanges.push([idx, idx + word.length]);
+      }
     }
 
     return warnings;
@@ -96,18 +116,15 @@ export class ComplianceAgent implements IComplianceAgent {
   private isSafeContext(text: string, forbidden: { word: string; safeNext?: string[] }): boolean {
     if (!forbidden.safeNext || forbidden.safeNext.length === 0) return false;
 
-    // 找到所有出现位置，检查是否每一处都被安全后缀跟随
     let idx = -1;
     const word = forbidden.word;
     while ((idx = text.indexOf(word, idx + 1)) !== -1) {
       const afterChar = text.substring(idx + word.length, idx + word.length + 1);
       if (!forbidden.safeNext.includes(afterChar)) {
-        // 至少有一处不是安全上下文 — 触发告警
         return false;
       }
     }
 
-    // 所有出现位置都被安全字符跟随 — 视为日常用语
     return true;
   }
 }

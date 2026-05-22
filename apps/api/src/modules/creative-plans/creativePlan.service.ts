@@ -2,11 +2,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
 import { ComplianceAgent } from '../../agents/ComplianceAgent';
 import { ContinuityAgent } from '../../agents/ContinuityAgent';
+import { planStore } from '../../memory-store';
 import type { CreativePlanInput, CreativePlanDraft } from '@shared/types/ai-providers';
 import type { CreativePlan, Scene, Material, Product } from '@shared/types';
 
-// Day 1 兜底存储（数据库未实现前）
-const planStore = new Map<string, CreativePlan>();
+const VALID_TRANSITIONS = new Set(['cut', 'fade', 'zoom']);
+const VALID_ASPECT_RATIOS = new Set(['9:16', '16:9']);
 
 export class CreativePlanService {
   private mockAiProvider: MockAiProvider;
@@ -50,7 +51,7 @@ export class CreativePlanService {
       })),
     };
 
-    // 写入内存存储
+    // 写入共享内存存储
     planStore.set(planId, creativePlan);
 
     return creativePlan;
@@ -70,10 +71,8 @@ export class CreativePlanService {
       throw new Error('分镜不存在');
     }
 
-    // 构建占位 product（数据库未实现前使用 demo fixture）
     const product = this.buildProductStub(creativePlan.productId);
 
-    // 调用MockAiProvider重新生成分镜
     const sceneDraft = await this.mockAiProvider.regenerateScene({
       product,
       materials,
@@ -82,7 +81,6 @@ export class CreativePlanService {
       modifyRequest,
     });
 
-    // 检查新分镜的合规性和连贯性
     const tempPlan: CreativePlanDraft = {
       productId: creativePlan.productId,
       style: creativePlan.style,
@@ -107,32 +105,84 @@ export class CreativePlanService {
     };
   }
 
-  // 获取创意方案详情 — 从内存 Map 查询
+  // 获取创意方案详情
   async getCreativePlan(id: string): Promise<CreativePlan | null> {
     return planStore.get(id) ?? null;
   }
 
-  // 更新创意方案 — 支持更新 title, hook, adCopy, cta, visualBible, scenes 等字段
+  // 更新创意方案 — 支持字段级更新，含浅层合同校验
   async updateCreativePlan(id: string, data: Partial<CreativePlan>): Promise<CreativePlan | null> {
     const existing = planStore.get(id);
     if (!existing) return null;
 
-    const allowedFields: (keyof CreativePlan)[] = [
-      'title', 'hook', 'adCopy', 'cta', 'visualBible', 'scenes',
+    const allowedScalarFields: (keyof CreativePlan)[] = [
+      'title', 'hook', 'adCopy', 'cta',
       'complianceWarnings', 'continuityWarnings',
     ];
 
-    for (const key of allowedFields) {
+    for (const key of allowedScalarFields) {
       if (key in data) {
         (existing as Record<string, unknown>)[key] = data[key];
       }
+    }
+
+    // visualBible — 浅层合同校验
+    if (data.visualBible) {
+      const vb = data.visualBible;
+      if (!vb.aspectRatio || !VALID_ASPECT_RATIOS.has(vb.aspectRatio)) {
+        throw new Error('visualBible.aspectRatio 必须为 9:16 或 16:9');
+      }
+      if (!vb.style || vb.style.trim().length === 0) {
+        throw new Error('visualBible.style 不能为空');
+      }
+      if (!vb.colorTone || vb.colorTone.trim().length === 0) {
+        throw new Error('visualBible.colorTone 不能为空');
+      }
+      if (!vb.lighting || vb.lighting.trim().length === 0) {
+        throw new Error('visualBible.lighting 不能为空');
+      }
+      if (!vb.cameraStyle || vb.cameraStyle.trim().length === 0) {
+        throw new Error('visualBible.cameraStyle 不能为空');
+      }
+      if (!vb.productAppearance || vb.productAppearance.trim().length === 0) {
+        throw new Error('visualBible.productAppearance 不能为空');
+      }
+      if (!vb.mainScenes || vb.mainScenes.length === 0) {
+        throw new Error('visualBible.mainScenes 不能为空');
+      }
+      if (!vb.continuityRules || vb.continuityRules.length === 0) {
+        throw new Error('visualBible.continuityRules 不能为空');
+      }
+      existing.visualBible = vb;
+    }
+
+    // scenes — 校验每项关键字段和 creativePlanId 一致性
+    if (data.scenes) {
+      if (!Array.isArray(data.scenes)) {
+        throw new Error('scenes 必须是数组');
+      }
+      for (const scene of data.scenes) {
+        if (scene.creativePlanId && scene.creativePlanId !== id) {
+          throw new Error(`scene.creativePlanId 必须与方案 id 一致: ${id}`);
+        }
+        if (scene.transition && !VALID_TRANSITIONS.has(scene.transition)) {
+          throw new Error(`scene.transition 必须是 cut / fade / zoom 之一，收到: ${scene.transition}`);
+        }
+        if (scene.duration !== undefined && (scene.duration <= 0 || scene.duration > 15)) {
+          throw new Error(`scene.duration 必须在 1-15 秒之间，收到: ${scene.duration}`);
+        }
+        if (scene.order !== undefined && (typeof scene.order !== 'number' || scene.order < 1)) {
+          throw new Error(`scene.order 必须 >= 1，收到: ${scene.order}`);
+        }
+      }
+      existing.scenes = data.scenes;
     }
 
     planStore.set(id, existing);
     return existing;
   }
 
-  // 批准创意方案 — 将 status 改为 approved
+  // 批准创意方案
   async approveCreativePlan(id: string): Promise<CreativePlan | null> {
     const existing = planStore.get(id);
     if (!existing) return null;
@@ -142,7 +192,6 @@ export class CreativePlanService {
     return existing;
   }
 
-  // 数据库未实现前的占位 product
   private buildProductStub(productId: string): Product {
     return {
       id: productId,

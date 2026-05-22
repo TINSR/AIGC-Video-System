@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import { CreativePlanService } from './creativePlan.service';
+import { planStore } from '../../memory-store';
 import type { ApiResponse, CreativePlan, Product, Material, Scene } from '@shared/types';
 
-// Demo fixtures — 数据库未实现前的占位数据
+// Demo fixtures — 数据库未实现前的占位数据（仅 generate 使用）
 const demoProduct: Product = {
   id: 'product_001',
   title: '便携榨汁杯',
@@ -57,7 +58,6 @@ export class CreativePlanController {
       const { productId } = req.params;
       const { style, maxDuration } = req.body;
 
-      // 数据库未实现前使用 demo fixture；productId 用于路由匹配校验
       const product = productId === demoProduct.id ? demoProduct : { ...demoProduct, id: productId };
 
       const creativePlan = await this.creativePlanService.generateCreativePlan({
@@ -82,13 +82,15 @@ export class CreativePlanController {
     }
   };
 
-  // 获取创意方案列表
-  list = async (_req: Request, res: Response<ApiResponse<CreativePlan[]>>) => {
+  // 获取创意方案列表 — 从共享 planStore 按 productId 过滤
+  list = async (req: Request, res: Response<ApiResponse<CreativePlan[]>>) => {
     try {
-      // TODO: 实现列表查询逻辑
+      const { productId } = req.params;
+      const plans = Array.from(planStore.values())
+        .filter(p => p.productId === productId);
       res.json({
         success: true,
-        data: [],
+        data: plans,
       });
     } catch (error) {
       res.status(500).json({
@@ -159,7 +161,7 @@ export class CreativePlanController {
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
-          message: '更新创意方案失败',
+          message: error instanceof Error ? error.message : '更新创意方案失败',
         },
       });
     }
@@ -197,58 +199,38 @@ export class CreativePlanController {
     }
   };
 
-  // 重新生成分镜
+  // 重新生成分镜 — 从共享 planStore 读取真实方案，并写回 store
   regenerateScene = async (req: Request, res: Response<ApiResponse<Scene>>) => {
     try {
       const { id, sceneId } = req.params;
       const { modifyRequest } = req.body;
 
-      // 构建 demo creativePlan（数据库未实现前）
-      const demoPlan: CreativePlan = {
-        id,
-        productId: demoProduct.id,
-        status: 'draft',
-        style: 'pain_point',
-        title: '早八也能喝到新鲜果汁',
-        hook: '早上来不及吃水果？',
-        adCopy: '30 秒打一杯新鲜果汁，通勤也能随身带走。',
-        cta: '点击了解便携榨汁杯，让新鲜随身走。',
-        visualBible: {
-          aspectRatio: '9:16',
-          style: 'TikTok 快节奏电商广告',
-          colorTone: '明亮清爽',
-          lighting: '柔和日光',
-          cameraStyle: '手持近景 + 商品特写',
-          productAppearance: '白色便携榨汁杯，透明杯身',
-          mainScenes: ['早晨厨房', '办公室桌面'],
-          continuityRules: ['每个分镜保持同一商品外观', '整体色调保持明亮清爽'],
-        },
-        scenes: [
-          {
-            id: sceneId,
-            creativePlanId: id,
-            order: 1,
-            duration: 3,
-            visualDescription: '上班族匆忙出门，桌上水果来不及吃',
-            subtitle: '早上来不及吃水果？',
-            voiceover: '早上来不及吃水果？',
-            materialId: 'material_001',
-            seedancePrompt: '9:16 TikTok style commercial, bright morning kitchen',
-            warnings: [],
-            transition: 'zoom',
+      const creativePlan = planStore.get(id);
+      if (!creativePlan) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: '创意方案不存在',
           },
-        ],
-        complianceWarnings: [],
-        continuityWarnings: [],
-        createdAt: '2026-05-21T00:00:00.000Z',
-      };
+        });
+      }
 
       const scene = await this.creativePlanService.regenerateScene({
-        creativePlan: demoPlan,
+        creativePlan,
         sceneId,
         materials: demoMaterials,
         modifyRequest,
       });
+
+      // 将重新生成的分镜写回 planStore
+      const idx = creativePlan.scenes.findIndex(s => s.id === sceneId);
+      if (idx >= 0) {
+        creativePlan.scenes[idx] = scene;
+      } else {
+        creativePlan.scenes.push(scene);
+      }
+      planStore.set(id, creativePlan);
 
       res.json({
         success: true,

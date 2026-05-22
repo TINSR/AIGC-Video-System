@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { 
-  Seedance15Provider as ISeedance15Provider, 
+import type {
+  Seedance15Provider as ISeedance15Provider,
   SeedanceRenderInput,
   SeedanceRenderOutput,
   SeedanceTaskStatus

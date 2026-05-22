@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import { Seedance15Provider } from '../../providers/video/Seedance15Provider';
 import { FFmpegComposeProvider } from '../../providers/video/FFmpegComposeProvider';
+import { taskStore, planStore, taskMaterialsStore } from '../../memory-store';
 import type { GenerationTask, CreativePlan, Material, TaskLog } from '@shared/types';
 
 // Day 1 任务进度约定
@@ -24,9 +25,6 @@ function makeLog(level: TaskLog['level'], message: string): TaskLog {
     timestamp: new Date().toISOString(),
   };
 }
-
-// Day 1 兜底任务存储（数据库未实现前）
-const taskStore = new Map<string, GenerationTask>();
 
 export class RenderService {
   private seedanceProvider: Seedance15Provider;
@@ -59,13 +57,14 @@ export class RenderService {
       updatedAt: new Date().toISOString(),
     };
 
-    // 写入内存存储，确保 getTaskStatus 可查询
+    // 写入共享存储
     taskStore.set(task.id, task);
+    // 保存素材快照供 retry 使用
+    taskMaterialsStore.set(task.id, materials);
 
     // 异步执行渲染任务
     this.executeRenderTask(task, creativePlan, materials).catch(error => {
       console.error('渲染任务失败:', error);
-      // 确保异常也被写入 store
       task.status = 'failed';
       task.errorMessage = error instanceof Error ? error.message : '渲染异常';
       task.logs.push(makeLog('error', `渲染异常：${task.errorMessage}`));
@@ -183,7 +182,6 @@ export class RenderService {
         return;
       }
 
-      // 更新进度供查询
       task.progress = Math.max(task.progress, 25 + Math.floor((status.progress / 100) * 5));
       task.updatedAt = new Date().toISOString();
       taskStore.set(task.id, task);
@@ -248,12 +246,12 @@ export class RenderService {
     }
   }
 
-  // 获取任务状态 — 从内存 Map 查询
+  // 获取任务状态
   async getTaskStatus(taskId: string): Promise<GenerationTask | null> {
     return taskStore.get(taskId) ?? null;
   }
 
-  // 重试失败任务
+  // 重试失败任务 — 从 planStore 读取真实 CreativePlan
   async retryTask(taskId: string): Promise<GenerationTask | null> {
     const task = taskStore.get(taskId);
     if (!task) return null;
@@ -262,7 +260,15 @@ export class RenderService {
       throw new Error(`任务状态为 ${task.status}，只有 failed 状态的任务可以重试`);
     }
 
-    // 重置为 pending 并重新入队
+    // 从共享 store 读取真实的 CreativePlan
+    const creativePlan = planStore.get(task.creativePlanId);
+    if (!creativePlan) {
+      throw new Error(`关联的创意方案 ${task.creativePlanId} 不存在，无法重试`);
+    }
+
+    const materials = taskMaterialsStore.get(taskId) ?? [];
+
+    // 重置为 pending
     task.status = 'pending';
     task.progress = 0;
     task.currentStep = STEP_MAP[0];
@@ -271,33 +277,7 @@ export class RenderService {
     task.updatedAt = new Date().toISOString();
     taskStore.set(task.id, task);
 
-    // 构建占位 creativePlan（从已有 task 字段重建）
-    const creativePlan: CreativePlan = {
-      id: task.creativePlanId,
-      productId: task.productId,
-      status: 'approved',
-      style: 'pain_point',
-      title: '',
-      hook: '',
-      adCopy: '',
-      cta: '',
-      visualBible: {
-        aspectRatio: '9:16',
-        style: '默认',
-        colorTone: '明亮',
-        lighting: '自然光',
-        cameraStyle: '特写',
-        productAppearance: '默认',
-        mainScenes: ['默认场景'],
-        continuityRules: ['保持一致性'],
-      },
-      scenes: [],
-      complianceWarnings: [],
-      continuityWarnings: [],
-      createdAt: task.createdAt,
-    };
-
-    this.executeRenderTask(task, creativePlan, []).catch(error => {
+    this.executeRenderTask(task, creativePlan, materials).catch(error => {
       console.error('重试任务失败:', error);
       task.status = 'failed';
       task.errorMessage = error instanceof Error ? error.message : '重试异常';
