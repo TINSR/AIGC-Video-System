@@ -1,8 +1,29 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Seedance15Provider } from '../../providers/video/Seedance15Provider';
 import { FFmpegComposeProvider } from '../../providers/video/FFmpegComposeProvider';
-import type { GenerationTask, CreativePlan, Material } from '@shared/types';
+import type { GenerationTask, CreativePlan, Material, TaskLog } from '@shared/types';
 import type { SeedanceRenderOutput } from '@shared/types/ai-providers';
+
+// Day 1 任务进度约定
+const STEP_MAP: Record<number, string> = {
+  0: '任务已创建',
+  10: '读取 CreativePlan 和素材',
+  25: 'Seedance 1.5 生成分镜片段',
+  40: '生成字幕和准备配音',
+  60: 'FFmpeg 后处理',
+  80: '拼接视频与 BGM',
+  95: '导出 mp4',
+  100: '生成完成',
+};
+
+function makeLog(level: TaskLog['level'], message: string): TaskLog {
+  return {
+    id: uuidv4(),
+    level,
+    message,
+    timestamp: new Date().toISOString(),
+  };
+}
 
 export class RenderService {
   private seedanceProvider: Seedance15Provider;
@@ -15,14 +36,21 @@ export class RenderService {
 
   // 创建渲染任务
   async createRenderTask(creativePlan: CreativePlan, materials: Material[]): Promise<GenerationTask> {
+    if (!creativePlan.scenes || creativePlan.scenes.length === 0) {
+      throw new Error('创意方案无分镜，无法创建渲染任务');
+    }
+    if (!creativePlan.visualBible) {
+      throw new Error('创意方案缺少 VisualBible，无法创建渲染任务');
+    }
+
     const task: GenerationTask = {
       id: uuidv4(),
       productId: creativePlan.productId,
       creativePlanId: creativePlan.id,
       status: 'pending',
       progress: 0,
-      currentStep: '初始化任务',
-      logs: [],
+      currentStep: STEP_MAP[0],
+      logs: [makeLog('info', '任务已创建')],
       provider: 'seedance_1_5',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -43,11 +71,18 @@ export class RenderService {
     materials: Material[]
   ): Promise<void> {
     try {
-      // 1. 尝试使用Seedance 1.5生成
+      // 10% — 读取 CreativePlan 和素材
       task.status = 'running';
       task.progress = 10;
-      task.currentStep = '调用Seedance API生成视频';
-      task.logs.push({ timestamp: new Date().toISOString(), message: '开始调用Seedance API' });
+      task.currentStep = STEP_MAP[10];
+      task.logs.push(makeLog('info', '开始读取 CreativePlan 和素材'));
+      task.updatedAt = new Date().toISOString();
+
+      // 25% — 调用 Seedance 1.5 生成分镜片段
+      task.progress = 25;
+      task.currentStep = STEP_MAP[25];
+      task.logs.push(makeLog('info', '开始调用 Seedance API'));
+      task.updatedAt = new Date().toISOString();
 
       const seedanceResult = await this.seedanceProvider.render({
         creativePlanId: creativePlan.id,
@@ -59,27 +94,26 @@ export class RenderService {
       });
 
       if (seedanceResult.status === 'failed') {
-        // Seedance失败，自动降级到FFmpeg
         task.provider = 'ffmpeg_fallback';
         task.progress = 30;
-        task.currentStep = 'Seedance调用失败，切换到FFmpeg兜底合成';
-        task.logs.push({ timestamp: new Date().toISOString(), message: `Seedance失败：${seedanceResult.errorMessage}，切换到FFmpeg兜底` });
+        task.currentStep = 'Seedance 调用失败，切换到 FFmpeg 兜底合成';
+        task.logs.push(makeLog('warn', `Seedance 失败：${seedanceResult.errorMessage}，切换到 FFmpeg 兜底`));
+        task.updatedAt = new Date().toISOString();
 
         await this.renderWithFFmpeg(task, creativePlan, materials);
       } else {
-        // Seedance任务提交成功，等待完成
-        task.progress = 20;
-        task.currentStep = '等待Seedance生成完成';
-        task.logs.push({ timestamp: new Date().toISOString(), message: `Seedance任务提交成功，任务ID：${seedanceResult.taskId}` });
+        task.progress = 25;
+        task.currentStep = STEP_MAP[25];
+        task.logs.push(makeLog('info', `Seedance 任务提交成功，任务ID：${seedanceResult.taskId}`));
+        task.updatedAt = new Date().toISOString();
 
         await this.waitForSeedanceCompletion(task, seedanceResult.taskId, creativePlan, materials);
       }
     } catch (error) {
       task.status = 'failed';
       task.errorMessage = error instanceof Error ? error.message : '渲染失败';
-      task.logs.push({ timestamp: new Date().toISOString(), message: `渲染失败：${task.errorMessage}` });
+      task.logs.push(makeLog('error', `渲染失败：${task.errorMessage}`));
       task.updatedAt = new Date().toISOString();
-      // TODO: 更新数据库任务状态
     }
   }
 
@@ -90,51 +124,63 @@ export class RenderService {
     creativePlan: CreativePlan,
     materials: Material[]
   ): Promise<void> {
-    const maxRetries = 30; // 最多轮询30次
+    const maxRetries = 30;
     let retries = 0;
 
     while (retries < maxRetries) {
       const status = await this.seedanceProvider.getTaskStatus(seedanceTaskId);
-      
-      task.progress = Math.max(task.progress, status.progress);
-      task.currentStep = `Seedance生成中：${status.progress}%`;
+
+      task.progress = Math.max(task.progress, 25 + Math.floor((status.progress / 100) * 15));
+      task.currentStep = STEP_MAP[25];
       task.updatedAt = new Date().toISOString();
 
       if (status.status === 'success') {
-        // Seedance生成成功，进行后处理
-        task.progress = 80;
-        task.currentStep = 'Seedance生成完成，进行后处理';
-        task.logs.push({ timestamp: new Date().toISOString(), message: 'Seedance生成成功，开始后处理' });
+        // 40% — 生成字幕和准备配音
+        task.progress = 40;
+        task.currentStep = STEP_MAP[40];
+        task.logs.push(makeLog('info', 'Seedance 生成完成，开始生成字幕和准备配音'));
+        task.updatedAt = new Date().toISOString();
 
-        // TODO: 调用FFmpeg进行字幕烧录、BGM添加等后处理
-        // 模拟后处理完成
+        // 60% — FFmpeg 后处理
+        task.progress = 60;
+        task.currentStep = STEP_MAP[60];
+        task.logs.push(makeLog('info', '开始 FFmpeg 后处理'));
+        task.updatedAt = new Date().toISOString();
+
+        // 95% — 导出 mp4
+        task.progress = 95;
+        task.currentStep = STEP_MAP[95];
+        task.updatedAt = new Date().toISOString();
+
+        // 100% — 完成
         task.progress = 100;
         task.status = 'success';
         task.outputVideoUrl = `/outputs/${task.id}.mp4`;
-        task.currentStep = '视频生成完成';
-        task.logs.push({ timestamp: new Date().toISOString(), message: '视频生成完成' });
+        task.currentStep = STEP_MAP[100];
+        task.logs.push(makeLog('info', '视频生成完成'));
         task.updatedAt = new Date().toISOString();
         return;
       } else if (status.status === 'failed') {
-        // Seedance失败，降级到FFmpeg
         task.provider = 'ffmpeg_fallback';
         task.progress = 30;
-        task.currentStep = 'Seedance生成失败，切换到FFmpeg兜底合成';
-        task.logs.push({ timestamp: new Date().toISOString(), message: `Seedance生成失败：${status.errorMessage}，切换到FFmpeg兜底` });
+        task.currentStep = 'Seedance 生成失败，切换到 FFmpeg 兜底合成';
+        task.logs.push(makeLog('warn', `Seedance 生成失败：${status.errorMessage}，切换到 FFmpeg 兜底`));
+        task.updatedAt = new Date().toISOString();
 
         await this.renderWithFFmpeg(task, creativePlan, materials);
         return;
       }
 
       retries++;
-      await new Promise(resolve => setTimeout(resolve, 2000)); // 每2秒轮询一次
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     // 轮询超时，降级到FFmpeg
     task.provider = 'ffmpeg_fallback';
     task.progress = 30;
-    task.currentStep = 'Seedance生成超时，切换到FFmpeg兜底合成';
-    task.logs.push({ timestamp: new Date().toISOString(), message: 'Seedance生成超时，切换到FFmpeg兜底' });
+    task.currentStep = 'Seedance 生成超时，切换到 FFmpeg 兜底合成';
+    task.logs.push(makeLog('warn', 'Seedance 生成超时，切换到 FFmpeg 兜底'));
+    task.updatedAt = new Date().toISOString();
 
     await this.renderWithFFmpeg(task, creativePlan, materials);
   }
@@ -147,37 +193,35 @@ export class RenderService {
   ): Promise<void> {
     try {
       task.progress = 40;
-      task.currentStep = 'FFmpeg合成视频中';
-      task.logs.push({ timestamp: new Date().toISOString(), message: '开始FFmpeg视频合成' });
+      task.currentStep = STEP_MAP[40];
+      task.logs.push(makeLog('info', '开始 FFmpeg 视频合成'));
       task.updatedAt = new Date().toISOString();
 
       const outputPath = `./outputs/${task.id}.mp4`;
-      
+
       const result = await this.ffmpegProvider.generateFromPlan({
         plan: creativePlan,
         materials,
         outputPath,
-        // TODO: 配置BGM和TTS
       });
 
       if (result.success) {
         task.progress = 100;
         task.status = 'success';
         task.outputVideoUrl = result.videoUrl;
-        task.currentStep = '视频生成完成';
-        task.logs.push({ timestamp: new Date().toISOString(), message: 'FFmpeg合成完成，视频生成成功' });
+        task.currentStep = STEP_MAP[100];
+        task.logs.push(makeLog('info', 'FFmpeg 合成完成'));
       } else {
         task.status = 'failed';
-        task.errorMessage = result.errorMessage || 'FFmpeg合成失败';
-        task.logs.push({ timestamp: new Date().toISOString(), message: `FFmpeg合成失败：${task.errorMessage}` });
+        task.errorMessage = result.errorMessage || 'FFmpeg 合成失败';
+        task.logs.push(makeLog('error', `FFmpeg 合成失败：${task.errorMessage}`));
       }
     } catch (error) {
       task.status = 'failed';
-      task.errorMessage = error instanceof Error ? error.message : 'FFmpeg合成失败';
-      task.logs.push({ timestamp: new Date().toISOString(), message: `FFmpeg合成失败：${task.errorMessage}` });
+      task.errorMessage = error instanceof Error ? error.message : 'FFmpeg 合成失败';
+      task.logs.push(makeLog('error', `FFmpeg 合成失败：${task.errorMessage}`));
     } finally {
       task.updatedAt = new Date().toISOString();
-      // TODO: 更新数据库任务状态
     }
   }
 

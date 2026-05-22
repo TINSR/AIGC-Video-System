@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { 
   Seedance15Provider as ISeedance15Provider, 
-  SeedanceRenderInput, 
-  SeedanceRenderOutput, 
-  TaskStatus 
+  SeedanceRenderInput,
+  SeedanceRenderOutput,
+  SeedanceTaskStatus
 } from '@shared/types/ai-providers';
 import { Seedance15OfficialAdapter } from './adapters/Seedance15OfficialAdapter';
 
@@ -40,7 +40,7 @@ export class Seedance15Provider implements ISeedance15Provider {
     }
   }
 
-  async getTaskStatus(taskId: string): Promise<TaskStatus> {
+  async getTaskStatus(taskId: string): Promise<SeedanceTaskStatus> {
     if (!this.apiKey) {
       return {
         taskId,

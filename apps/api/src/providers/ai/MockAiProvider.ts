@@ -1,6 +1,5 @@
-import { v4 as uuidv4 } from 'uuid';
 import type { AiProvider, ScriptInput, CreativePlanDraft, SceneRegenerateInput, SceneDraft } from '@shared/types/ai-providers';
-import type { Product, Material } from '@shared/types';
+import type { Product, Material, ScriptStyle, VisualBible } from '@shared/types';
 
 export class MockAiProvider implements AiProvider {
   async generateScript(input: ScriptInput): Promise<CreativePlanDraft> {
@@ -21,11 +20,15 @@ export class MockAiProvider implements AiProvider {
     const { existingScene, modifyRequest } = input;
 
     return {
-      ...existingScene,
       order: existingScene.order,
+      duration: existingScene.duration,
       visualDescription: modifyRequest ? `${existingScene.visualDescription} - ${modifyRequest}` : existingScene.visualDescription,
+      subtitle: existingScene.subtitle,
+      voiceover: existingScene.voiceover,
       seedancePrompt: modifyRequest ? `${existingScene.seedancePrompt}, ${modifyRequest}` : existingScene.seedancePrompt,
+      materialId: existingScene.materialId,
       warnings: [],
+      transition: existingScene.transition,
     };
   }
 
@@ -33,26 +36,31 @@ export class MockAiProvider implements AiProvider {
   private generateJuicerPlan(
     product: Product,
     materials: Material[],
-    style: string,
+    style: ScriptStyle | string,
     maxDuration: number
   ): CreativePlanDraft {
     const imageMaterials = materials.filter(m => m.type === 'image');
     const videoMaterials = materials.filter(m => m.type === 'video');
 
+    const visualBible: VisualBible = {
+      aspectRatio: '9:16',
+      style: 'TikTok 快节奏电商广告',
+      colorTone: '明亮清爽',
+      lighting: '柔和日光',
+      cameraStyle: '手持近景 + 商品特写',
+      productAppearance: '白色简约便携榨汁杯，透明杯身，蓝色按钮',
+      mainScenes: ['办公室桌面', '健身房', '户外野餐', '居家厨房'],
+      continuityRules: ['每个分镜保持同一商品外观', '整体色调保持明亮清爽'],
+    };
+
     return {
       productId: product.id,
-      style: style as any,
+      style: style as ScriptStyle,
       title: `夏日鲜榨自由！${product.title}随身畅饮`,
       hook: '夏天想喝鲜榨果汁还要扛大榨汁机？',
       adCopy: `这款${product.title}只有水杯大小，30秒鲜榨，随身携带，${product.sellingPoints.join('，')}，随时享受新鲜健康！`,
       cta: '现在下单立享优惠，点击下方小黄车带走吧！',
-      visualBible: {
-        productAppearance: '白色简约便携榨汁杯，透明杯身，蓝色按钮',
-        mainScenes: ['办公室桌面', '健身房', '户外野餐', '居家厨房'],
-        colorTone: '明亮清新，夏日感，蓝白为主色调',
-        continuityRules: ['商品外观保持一致', '场景切换自然', '色调统一明亮'],
-        maxDuration: maxDuration,
-      },
+      visualBible,
       scenes: [
         {
           order: 1,
@@ -108,26 +116,31 @@ export class MockAiProvider implements AiProvider {
   private generateTravelBagPlan(
     product: Product,
     materials: Material[],
-    style: string,
+    style: ScriptStyle | string,
     maxDuration: number
   ): CreativePlanDraft {
     const imageMaterials = materials.filter(m => m.type === 'image');
     const videoMaterials = materials.filter(m => m.type === 'video');
 
+    const visualBible: VisualBible = {
+      aspectRatio: '9:16',
+      style: 'TikTok 生活好物推荐',
+      colorTone: '干净整洁，商务简约，灰色调为主',
+      lighting: '柔和室内光',
+      cameraStyle: '手持近景 + 收纳过程特写',
+      productAppearance: '灰色防水牛津布收纳包，多隔层设计，拉链款',
+      mainScenes: ['居家卧室打包', '酒店行李箱整理', '出差出行'],
+      continuityRules: ['每个分镜保持同一商品外观', '收纳功能清晰展示', '色调统一整洁'],
+    };
+
     return {
       productId: product.id,
-      style: style as any,
+      style: style as ScriptStyle,
       title: `旅行收纳神器！${product.title}让行李箱空间翻倍`,
       hook: '旅行打包行李箱总是关不上？',
       adCopy: `这款${product.title}分类收纳，防水耐脏，让你的行李箱空间直接翻倍，${product.sellingPoints.join('，')}，出差旅行必备！`,
       cta: '现在下单享8折优惠，赶紧入手吧！',
-      visualBible: {
-        productAppearance: '灰色防水牛津布收纳包，多隔层设计，拉链款',
-        mainScenes: ['居家卧室打包', '酒店行李箱整理', '出差出行'],
-        colorTone: '干净整洁，商务简约，灰色调为主',
-        continuityRules: ['产品外观保持一致', '收纳功能清晰展示', '色调统一整洁'],
-        maxDuration: maxDuration,
-      },
+      visualBible,
       scenes: [
         {
           order: 1,
@@ -183,26 +196,31 @@ export class MockAiProvider implements AiProvider {
   private generateDefaultPlan(
     product: Product,
     materials: Material[],
-    style: string,
+    style: ScriptStyle | string,
     maxDuration: number
   ): CreativePlanDraft {
     const imageMaterials = materials.filter(m => m.type === 'image');
     const videoMaterials = materials.filter(m => m.type === 'video');
 
+    const visualBible: VisualBible = {
+      aspectRatio: '9:16',
+      style: 'TikTok 电商广告',
+      colorTone: '明亮简洁，符合产品调性',
+      lighting: '自然光为主',
+      cameraStyle: '近景 + 产品特写',
+      productAppearance: `简约现代设计的${product.title}`,
+      mainScenes: [product.usageScene || '日常场景', '居家使用', '户外使用'],
+      continuityRules: ['每个分镜保持同一商品外观', '场景切换自然', '色调统一明亮'],
+    };
+
     return {
       productId: product.id,
-      style: style as any,
+      style: style as ScriptStyle,
       title: `${product.title} - 你的生活好帮手`,
       hook: `你是不是还在为${product.usageScene}烦恼？`,
       adCopy: `这款${product.title}，${product.sellingPoints.join('，')}，专为${product.targetAudience}设计，让你的生活更便捷！`,
       cta: '现在下单享专属优惠，不要错过哦！',
-      visualBible: {
-        productAppearance: `简约现代设计的${product.title}`,
-        mainScenes: [product.usageScene, '居家使用', '户外使用'],
-        colorTone: '明亮简洁，符合产品调性',
-        continuityRules: ['产品展示清晰', '场景自然', '色调统一'],
-        maxDuration: maxDuration,
-      },
+      visualBible,
       scenes: [
         {
           order: 1,

@@ -1,4 +1,4 @@
-import type { SeedanceRenderInput, SeedanceRenderOutput, TaskStatus } from '@shared/types/ai-providers';
+import type { SeedanceRenderInput, SeedanceRenderOutput, SeedanceTaskStatus } from '@shared/types/ai-providers';
 
 export class Seedance15OfficialAdapter {
   private apiKey?: string;
@@ -20,7 +20,7 @@ export class Seedance15OfficialAdapter {
   }
 
   // Seedance 1.5 官方API任务状态查询接口占位实现
-  async getTaskStatus(taskId: string): Promise<TaskStatus> {
+  async getTaskStatus(taskId: string): Promise<SeedanceTaskStatus> {
     // TODO: 实现真实的Seedance任务状态查询
     // 目前返回模拟的任务进度
     return {

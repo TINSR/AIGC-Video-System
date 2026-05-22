@@ -1,4 +1,11 @@
-import type { Product, Material, CreativePlan, Scene, GenerationTask } from './index';
+import type { Product, Material, CreativePlan, Scene, VisualBible } from './index';
+
+// CreativePlan草稿类型：不含 id/createdAt/status，且分镜使用 SceneDraft
+export type SceneDraft = Omit<Scene, 'id' | 'creativePlanId'>;
+
+export type CreativePlanDraft = Omit<CreativePlan, 'id' | 'createdAt' | 'status' | 'scenes'> & {
+  scenes: SceneDraft[];
+};
 
 // AiProvider 统一接口
 export interface AiProvider {
@@ -11,7 +18,7 @@ export interface ScriptInput {
   product: Product;
   materials: Material[];
   style?: "pain_point" | "review" | "scenario" | "discount" | "premium";
-  maxDuration?: number; // 总时长限制，默认15秒
+  maxDuration?: number;
 }
 
 export interface SceneRegenerateInput {
@@ -22,22 +29,17 @@ export interface SceneRegenerateInput {
   modifyRequest?: string;
 }
 
-// CreativePlan草稿类型（与最终CreativePlan类型一致，仅缺少id和系统字段）
-export type CreativePlanDraft = Omit<CreativePlan, 'id' | 'createdAt' | 'status'>;
-
-export type SceneDraft = Omit<Scene, 'id' | 'creativePlanId' | 'createdAt'>;
-
 // Seedance 1.5 Provider 接口
 export interface Seedance15Provider {
   render(input: SeedanceRenderInput): Promise<SeedanceRenderOutput>;
-  getTaskStatus(taskId: string): Promise<TaskStatus>;
+  getTaskStatus(taskId: string): Promise<SeedanceTaskStatus>;
 }
 
 export interface SeedanceRenderInput {
   creativePlanId: string;
   scenes: Scene[];
   materials: Material[];
-  visualBible: CreativePlan['visualBible'];
+  visualBible: VisualBible;
   resolution?: '1080p' | '4k';
   aspectRatio?: '9:16' | '16:9' | '1:1';
 }
@@ -54,7 +56,7 @@ export interface SeedanceRenderOutput {
   errorMessage?: string;
 }
 
-export type TaskStatus = Omit<SeedanceRenderOutput, 'clips'>;
+export type SeedanceTaskStatus = Omit<SeedanceRenderOutput, 'clips'>;
 
 // FFmpeg 合成Provider 接口
 export interface FFmpegComposeProvider {

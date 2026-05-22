@@ -8,89 +8,111 @@ export class ContinuityAgent implements IContinuityAgent {
     materials: Material[]
   ): Promise<{ continuityWarnings: ContinuityWarning[] }> {
     const warnings: ContinuityWarning[] = [];
+    const vb = plan.visualBible;
 
-    // 1. 检查总时长
-    const totalDuration = plan.scenes.reduce((sum, scene) => sum + scene.duration, 0);
-    const maxDuration = plan.visualBible.maxDuration || 15;
-    if (totalDuration > maxDuration) {
+    // 1. 检查关键视觉规则是否缺失
+    if (!vb.style || vb.style.trim().length === 0) {
       warnings.push({
-        message: `视频总时长${totalDuration}秒，超过最大限制${maxDuration}秒`,
-        type: 'duration',
-        suggestion: `建议减少分镜时长，总时长控制在${maxDuration}秒以内`,
+        message: 'VisualBible 缺少 style 字段',
+        type: 'colorTone',
+        suggestion: '请在 VisualBible 中定义视频风格（style）',
       });
-    } else if (totalDuration < 3) {
+    }
+    if (!vb.colorTone || vb.colorTone.trim().length === 0) {
       warnings.push({
-        message: `视频总时长${totalDuration}秒，过短`,
-        type: 'duration',
-        suggestion: '建议增加分镜，总时长建议3-15秒',
+        message: 'VisualBible 缺少 colorTone 字段',
+        type: 'colorTone',
+        suggestion: '请在 VisualBible 中定义色调（colorTone）',
+      });
+    }
+    if (!vb.aspectRatio) {
+      warnings.push({
+        message: 'VisualBible 缺少 aspectRatio 字段',
+        type: 'scene',
+        suggestion: '请指定画面比例（9:16 或 16:9）',
+      });
+    }
+    if (!vb.productAppearance || vb.productAppearance.trim().length === 0) {
+      warnings.push({
+        message: 'VisualBible 缺少 productAppearance 字段',
+        type: 'productAppearance',
+        suggestion: '请在 VisualBible 中定义商品外观描述',
+      });
+    }
+    if (!vb.mainScenes || vb.mainScenes.length === 0) {
+      warnings.push({
+        message: 'VisualBible 缺少 mainScenes 字段',
+        type: 'scene',
+        suggestion: '请在 VisualBible 中定义至少一个主场景',
+      });
+    }
+    if (!vb.continuityRules || vb.continuityRules.length === 0) {
+      warnings.push({
+        message: 'VisualBible 缺少 continuityRules 字段',
+        type: 'scene',
+        suggestion: '请在 VisualBible 中定义连贯性规则',
       });
     }
 
-    // 2. 检查商品外观一致性
-    const productAppearance = plan.visualBible.productAppearance.toLowerCase();
-    plan.scenes.forEach((scene, index) => {
-      const sceneDesc = scene.visualDescription.toLowerCase();
-      const prompt = scene.seedancePrompt.toLowerCase();
+    // 2. 检查总时长
+    const totalDuration = plan.scenes.reduce((sum, scene) => sum + scene.duration, 0);
+    if (totalDuration < 3) {
+      warnings.push({
+        message: `视频总时长 ${totalDuration} 秒过短`,
+        type: 'duration',
+        suggestion: '建议增加分镜，总时长建议 3-15 秒',
+      });
+    } else if (totalDuration > 60) {
+      warnings.push({
+        message: `视频总时长 ${totalDuration} 秒过长`,
+        type: 'duration',
+        suggestion: '建议减少分镜时长，总时长控制在 60 秒以内',
+      });
+    }
 
-      if (!sceneDesc.includes(productAppearance.split(' ')[0]) && !prompt.includes(productAppearance.split(' ')[0])) {
+    // 3. 检查转场是否覆盖所有相邻分镜
+    for (let i = 0; i < plan.scenes.length - 1; i++) {
+      if (!plan.scenes[i].transition) {
         warnings.push({
-          message: `第${index + 1}个分镜未提及商品外观描述，可能与全局设定不一致`,
-          type: 'productAppearance',
-          sceneId: scene.id || `scene-${index}`,
-          suggestion: '建议在分镜描述中包含商品外观特征，保持与全局visualBible一致',
-        });
-      }
-    });
-
-    // 3. 检查场景一致性
-    const mainScenes = plan.visualBible.mainScenes.map(s => s.toLowerCase());
-    plan.scenes.forEach((scene, index) => {
-      const sceneDesc = scene.visualDescription.toLowerCase();
-      const prompt = scene.seedancePrompt.toLowerCase();
-
-      const hasMatchingScene = mainScenes.some(mainScene => 
-        sceneDesc.includes(mainScene) || prompt.includes(mainScene)
-      );
-
-      if (!hasMatchingScene) {
-        warnings.push({
-          message: `第${index + 1}个分镜场景不在全局设定的主场景列表中`,
+          message: `第 ${i + 1} 个分镜缺少转场定义`,
           type: 'scene',
-          sceneId: scene.id || `scene-${index}`,
-          suggestion: `建议使用全局设定的场景：${mainScenes.join('、')}，或更新visualBible的mainScenes`,
+          suggestion: '请为每个分镜指定转场方式（cut / fade / zoom）',
         });
       }
-    });
+    }
 
-    // 4. 检查色调一致性
-    const colorTone = plan.visualBible.colorTone.toLowerCase();
-    plan.scenes.forEach((scene, index) => {
-      const prompt = scene.seedancePrompt.toLowerCase();
-
-      if (!prompt.includes(colorTone.split(' ')[0])) {
-        warnings.push({
-          message: `第${index + 1}个分镜Seedance提示词未包含全局色调描述`,
-          type: 'colorTone',
-          sceneId: scene.id || `scene-${index}`,
-          suggestion: `建议在Seedance提示词中加入"${colorTone}"，保持全局色调一致`,
-        });
-      }
-    });
-
-    // 5. 检查素材类型匹配
-    plan.scenes.forEach((scene, index) => {
+    // 4. 检查素材 ID 是否存在
+    for (let i = 0; i < plan.scenes.length; i++) {
+      const scene = plan.scenes[i];
       if (scene.materialId) {
         const material = materials.find(m => m.id === scene.materialId);
         if (!material) {
           warnings.push({
-            message: `第${index + 1}个分镜关联的素材${scene.materialId}不存在`,
+            message: `第 ${i + 1} 个分镜关联的素材 ${scene.materialId} 不存在`,
             type: 'productAppearance',
-            sceneId: scene.id || `scene-${index}`,
-            suggestion: '建议使用已上传的有效素材ID',
+            suggestion: '请使用已上传的有效素材 ID，或置空 materialId',
           });
         }
       }
-    });
+    }
+
+    // 5. 检查是否有分镜时长异常（0 或超大值）
+    for (let i = 0; i < plan.scenes.length; i++) {
+      const scene = plan.scenes[i];
+      if (scene.duration <= 0) {
+        warnings.push({
+          message: `第 ${i + 1} 个分镜时长为 ${scene.duration} 秒，无效`,
+          type: 'duration',
+          suggestion: '请设置合理的分镜时长（1-15 秒）',
+        });
+      } else if (scene.duration > 30) {
+        warnings.push({
+          message: `第 ${i + 1} 个分镜时长 ${scene.duration} 秒，过长`,
+          type: 'duration',
+          suggestion: '单个分镜建议不超过 15 秒',
+        });
+      }
+    }
 
     return { continuityWarnings: warnings };
   }
