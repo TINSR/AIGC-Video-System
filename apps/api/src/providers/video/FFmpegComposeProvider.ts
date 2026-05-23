@@ -13,6 +13,19 @@ import type { Material } from '@shared/types';
 
 const execAsync = promisify(exec);
 
+let ffmpegAvailable: boolean | null = null;
+
+async function checkFFmpegAvailable(): Promise<boolean> {
+  if (ffmpegAvailable !== null) return ffmpegAvailable;
+  try {
+    await execAsync('ffmpeg -version');
+    ffmpegAvailable = true;
+  } catch (e) {
+    ffmpegAvailable = false;
+  }
+  return ffmpegAvailable;
+}
+
 function formatSrtTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -84,6 +97,17 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
 
   async compose(input: FinalComposeInput): Promise<FinalComposeOutput> {
     try {
+      const ffmpegOk = await checkFFmpegAvailable();
+      if (!ffmpegOk) {
+        return {
+          success: false,
+          videoUrl: '',
+          duration: 0,
+          resolution: input.resolution || '1080p',
+          fileSize: 0,
+          errorMessage: 'FFmpeg 不可用，请先安装 FFmpeg 并配置到环境变量中',
+        };
+      }
       const { clips, bgmUrl, voiceoverUrl, outputPath, resolution = '1080p', aspectRatio = '9:16' } = input;
 
       if (!clips || clips.length === 0) {
