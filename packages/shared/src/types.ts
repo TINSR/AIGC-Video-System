@@ -101,3 +101,22 @@ export type ApiResponse<T> = {
     message: string;
   };
 };
+
+export type AnalyticsOverview = {
+  totalPlays: number;
+  totalClicks: number;
+  conversionRate: number;
+  averageWatchRate: number;
+  dailyTrend: Array<{
+    date: string;
+    plays: number;
+    clicks: number;
+    conversions: number;
+  }>;
+  abTests: Array<{
+    name: string;
+    versionA: number;
+    versionB: number;
+    winner: "A" | "B";
+  }>;
+};
