@@ -1,6 +1,6 @@
 import { exec } from 'child_process';
+import { randomUUID } from 'crypto';
 import { promisify } from 'util';
-import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
 import type {
@@ -109,7 +109,7 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
 
       for (let i = 0; i < clips.length; i++) {
         const clip = clips[i];
-        const tempOutput = path.join(this.tempDir, `clip_${i}_${uuidv4()}.mp4`);
+        const tempOutput = path.join(this.tempDir, `clip_${i}_${randomUUID()}.mp4`);
         const resolvedPath = this.resolveLocalMediaPath(clip.url);
         let clipGenerated = false;
 
@@ -138,7 +138,7 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
           const subtitleFile = path.join(this.tempDir, `subtitle_${i}.srt`);
           this.createSubtitleFile(clip.subtitle, clip.duration, subtitleFile);
 
-          const subtitledOutput = path.join(this.tempDir, `clip_sub_${i}_${uuidv4()}.mp4`);
+          const subtitledOutput = path.join(this.tempDir, `clip_sub_${i}_${randomUUID()}.mp4`);
           await execAsync(`${this.ffmpegPath} -i "${tempOutput}" -vf subtitles="${subtitleFile.replace(/\\/g, '/')}" -c:a copy "${subtitledOutput}" -y`);
 
           fs.unlinkSync(tempOutput);
@@ -150,10 +150,10 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
       }
 
       // 拼接所有片段
-      const concatFile = path.join(this.tempDir, `concat_${uuidv4()}.txt`);
+      const concatFile = path.join(this.tempDir, `concat_${randomUUID()}.txt`);
       fs.writeFileSync(concatFile, clipFiles.map(file => `file '${file.replace(/'/g, "'\\''")}'`).join('\n'));
 
-      const concatenatedOutput = path.join(this.tempDir, `concatenated_${uuidv4()}.mp4`);
+      const concatenatedOutput = path.join(this.tempDir, `concatenated_${randomUUID()}.mp4`);
       await execAsync(`${this.ffmpegPath} -f concat -safe 0 -i "${concatFile}" -c copy "${concatenatedOutput}" -y`);
 
       // 添加BGM和语音

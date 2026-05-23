@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import type {
   Seedance15Provider as ISeedance15Provider,
   SeedanceRenderInput,
@@ -20,7 +20,7 @@ export class Seedance15Provider implements ISeedance15Provider {
     // 检查API Key是否存在，不存在则返回降级提示
     if (!this.apiKey) {
       return {
-        taskId: uuidv4(),
+        taskId: randomUUID(),
         status: 'failed',
         progress: 0,
         errorMessage: 'Seedance API Key未配置，将自动使用FFmpeg兜底合成',
@@ -32,7 +32,7 @@ export class Seedance15Provider implements ISeedance15Provider {
       return await this.adapter.render(input);
     } catch (error) {
       return {
-        taskId: uuidv4(),
+        taskId: randomUUID(),
         status: 'failed',
         progress: 0,
         errorMessage: `Seedance渲染失败：${error instanceof Error ? error.message : '未知错误'}，将自动使用FFmpeg兜底合成`,

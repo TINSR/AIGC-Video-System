@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import { Seedance15Provider } from '../../providers/video/Seedance15Provider';
 import { FFmpegComposeProvider } from '../../providers/video/FFmpegComposeProvider';
@@ -19,7 +19,7 @@ const STEP_MAP: Record<number, string> = {
 
 function makeLog(level: TaskLog['level'], message: string): TaskLog {
   return {
-    id: uuidv4(),
+    id: randomUUID(),
     level,
     message,
     timestamp: new Date().toISOString(),
@@ -45,7 +45,7 @@ export class RenderService {
     }
 
     const task: GenerationTask = {
-      id: uuidv4(),
+      id: randomUUID(),
       productId: creativePlan.productId,
       creativePlanId: creativePlan.id,
       status: 'pending',

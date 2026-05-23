@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
 import { ComplianceAgent } from '../../agents/ComplianceAgent';
 import { ContinuityAgent } from '../../agents/ContinuityAgent';
@@ -34,7 +34,7 @@ export class CreativePlanService {
     const { continuityWarnings } = await this.continuityAgent.check(planDraft, materials);
 
     // 4. 组装完整的CreativePlan：补齐 id、status、createdAt、scene.id、scene.creativePlanId
-    const planId = uuidv4();
+    const planId = randomUUID();
     const now = new Date().toISOString();
 
     const creativePlan: CreativePlan = {
@@ -46,7 +46,7 @@ export class CreativePlanService {
       createdAt: now,
       scenes: planDraft.scenes.map((scene) => ({
         ...scene,
-        id: uuidv4(),
+        id: randomUUID(),
         creativePlanId: planId,
       })),
     };

@@ -1,5 +1,7 @@
 import prisma from '../../config/prisma';
 
+type ProductRecord = Awaited<ReturnType<typeof prisma.product.findMany>>[number];
+
 interface CreateProductData {
   title: string;
   category: string;
@@ -27,7 +29,7 @@ export const getProducts = async () => {
     orderBy: { createdAt: 'desc' },
   });
 
-  return products.map(product => ({
+  return products.map((product: ProductRecord) => ({
     ...product,
     sellingPoints: JSON.parse(product.sellingPoints),
   }));
