@@ -23,9 +23,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json" },
     ...init
   });
-  const payload = await response.json();
-  if (!payload.success) {
-    throw new Error(payload.error?.message ?? "请求失败");
+  const payload = await response.json().catch(() => undefined);
+  if (!response.ok || !payload?.success) {
+    throw new Error(payload?.error?.message ?? `请求失败：${response.status}`);
   }
   return payload.data as T;
 }
@@ -83,15 +83,20 @@ export const api = {
       });
     }
     await wait();
-    const scene = creativePlans[0].scenes.find((item) => item.id === sceneId)!;
-    return { ...scene, ...input };
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
+    const updated = { ...scene, ...input };
+    plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
+    return updated;
   },
   async approvePlan(planId: string): Promise<CreativePlan> {
     if (!USE_MOCK) {
       return request<CreativePlan>(`/creative-plans/${planId}/approve`, { method: "POST" });
     }
     await wait();
-    return { ...creativePlans[0], id: planId, status: "approved" };
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    plan.status = "approved";
+    return { ...plan, id: planId, status: "approved" };
   },
   async renderPlan(planId: string): Promise<GenerationTask> {
     if (!USE_MOCK) {
@@ -107,12 +112,27 @@ export const api = {
       });
     }
     await wait();
-    return generationTasks[0];
+    return { ...generationTasks[0], creativePlanId: planId };
   },
   async getTask(taskId: string): Promise<GenerationTask> {
     if (!USE_MOCK) return request<GenerationTask>(`/tasks/${taskId}`);
     await wait();
     return generationTasks.find((task) => task.id === taskId) ?? generationTasks[0];
+  },
+  async retryTask(taskId: string): Promise<GenerationTask> {
+    if (!USE_MOCK) {
+      return request<GenerationTask>(`/tasks/${taskId}/retry`, { method: "POST" });
+    }
+    await wait();
+    const task = generationTasks.find((item) => item.id === taskId) ?? generationTasks[0];
+    return {
+      ...task,
+      status: "pending",
+      progress: 0,
+      currentStep: "任务已重新创建",
+      errorMessage: undefined,
+      updatedAt: new Date().toISOString()
+    };
   },
   async getAnalytics(): Promise<AnalyticsOverview> {
     if (!USE_MOCK) return request<AnalyticsOverview>("/analytics/overview");

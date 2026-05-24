@@ -1,4 +1,4 @@
-import { Card, Descriptions, Typography } from "antd";
+import { Card, Descriptions, Tag, Typography } from "antd";
 import type { CreativePlan } from "@clipshop/shared";
 
 type Props = {
@@ -10,6 +10,9 @@ export function ScriptResultPanel({ plan }: Props) {
     <Card className="surface" title="广告脚本">
       <Descriptions column={1} size="small">
         <Descriptions.Item label="标题">{plan.title}</Descriptions.Item>
+        <Descriptions.Item label="状态">
+          <Tag color={plan.status === "approved" ? "green" : "blue"}>{plan.status}</Tag>
+        </Descriptions.Item>
         <Descriptions.Item label="Hook">{plan.hook}</Descriptions.Item>
         <Descriptions.Item label="广告词">
           <Typography.Text>{plan.adCopy}</Typography.Text>
