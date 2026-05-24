@@ -1,7 +1,7 @@
 # Agent B Day 2 任务书：补齐缺口 API 与规划持久化
 
-> 角色：后端 Agent  
-> 基线分支：`codex/integrate-ai-video`  
+> 角色：后端 Agent
+> 基线分支：`codex/integrate-ai-video`
 > 目标：不要重做已经跑通的 CreativePlan/render 链路。集中补 Materials/Analytics 缺口，并给 Prisma/BullMQ 迁移一个可执行边界。
 
 ---

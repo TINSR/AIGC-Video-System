@@ -211,7 +211,7 @@ export class RenderService {
       const ffmpegCheck = await this.ffmpegProvider.checkFFmpegAvailability();
       if (!ffmpegCheck.available) {
         task.status = 'failed';
-        task.errorMessage = `FFmpeg 不可用：${ffmpegCheck.error}\n\n安装方法：\n1. winget install Gyan.FFmpeg\n2. 或下载 https://github.com/BtbN/FFmpeg-Builds/releases 并添加到 PATH\n3. 或设置环境变量 FFMPEG_PATH 指向 ffmpeg.exe 的完整路径\n\n详见 docs/FFMPEG_INSTALLATION.md`;
+        task.errorMessage = `FFmpeg 不可用：${ffmpegCheck.error}\n\n安装方法：\n1. winget install Gyan.FFmpeg\n2. 或下载 https://github.com/BtbN/FFmpeg-Builds/releases 并添加到 PATH\n3. 或设置环境变量 FFMPEG_PATH 指向 ffmpeg.exe 的完整路径`;
         task.logs.push(makeLog('error', task.errorMessage));
         task.updatedAt = new Date().toISOString();
         taskStore.set(task.id, task);
@@ -239,7 +239,7 @@ export class RenderService {
       if (result.success) {
         task.progress = 100;
         task.status = 'success';
-        task.outputVideoUrl = result.videoUrl;
+        task.outputVideoUrl = `/outputs/${task.id}.mp4`;
         task.currentStep = STEP_MAP[100];
         task.logs.push(makeLog('info', 'FFmpeg 合成完成'));
       } else {

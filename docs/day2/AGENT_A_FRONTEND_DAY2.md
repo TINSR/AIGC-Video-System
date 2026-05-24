@@ -1,7 +1,7 @@
 # Agent A Day 2 任务书：前端真实 API 与审核体验增强
 
-> 角色：前端 Agent  
-> 基线分支：`codex/integrate-ai-video`  
+> 角色：前端 Agent
+> 基线分支：`codex/integrate-ai-video`
 > 目标：不要重做页面。基于现有前端，把 mock 页面推进到真实 API 可用，并把“生成前审核”做成比赛演示亮点。
 
 ---

@@ -1,7 +1,7 @@
 # Agent C Day 2 任务书：FFmpeg 出片与视频链路兜底
 
-> 角色：AI/视频 Agent  
-> 基线分支：`codex/integrate-ai-video`  
+> 角色：AI/视频 Agent
+> 基线分支：`codex/integrate-ai-video`
 > 目标：在 Seedance 真实 API 未接入前，保证 fallback 链路可解释、可验证，最好能真实输出 mp4。
 
 ---

@@ -1,6 +1,6 @@
 # Day 2 共享验收清单
 
-> 基线分支：`codex/integrate-ai-video`  
+> 基线分支：`codex/integrate-ai-video`
 > DDL：`2026-05-24 12:00`，Asia/Shanghai
 
 ---

@@ -1,7 +1,7 @@
 # Day 2 总控文档：integration 基线稳定与真实联调
 
-> 基线分支：`codex/integrate-ai-video`  
-> Day 2 DDL：`2026-05-24 12:00`，Asia/Shanghai  
+> 基线分支：`codex/integrate-ai-video`
+> Day 2 DDL：`2026-05-24 12:00`，Asia/Shanghai
 > 总目标：不要重做 Day 1。基于已经跑通的 `generate -> approve -> render -> get task` 链路，补齐前端真实 API、Materials/Analytics 缺口、FFmpeg 验证，以及 Prisma/BullMQ 后续迁移边界。
 
 ---
