@@ -207,9 +207,20 @@ export class RenderService {
     materials: Material[]
   ): Promise<void> {
     try {
+      // 检查 FFmpeg 可用性
+      const ffmpegCheck = await this.ffmpegProvider.checkFFmpegAvailability();
+      if (!ffmpegCheck.available) {
+        task.status = 'failed';
+        task.errorMessage = `FFmpeg 不可用：${ffmpegCheck.error}\n\n安装方法：\n1. winget install Gyan.FFmpeg\n2. 或下载 https://github.com/BtbN/FFmpeg-Builds/releases 并添加到 PATH\n3. 或设置环境变量 FFMPEG_PATH 指向 ffmpeg.exe 的完整路径\n\n详见 docs/FFMPEG_INSTALLATION.md`;
+        task.logs.push(makeLog('error', task.errorMessage));
+        task.updatedAt = new Date().toISOString();
+        taskStore.set(task.id, task);
+        return;
+      }
+
       task.progress = 40;
       task.currentStep = STEP_MAP[40];
-      task.logs.push(makeLog('info', '开始 FFmpeg 视频合成'));
+      task.logs.push(makeLog('info', `开始 FFmpeg 视频合成 (FFmpeg 版本: ${ffmpegCheck.version})`));
       task.updatedAt = new Date().toISOString();
       taskStore.set(task.id, task);
 
