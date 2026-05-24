@@ -22,21 +22,26 @@ export interface AnalyticsOverview {
 
 export class AnalyticsService {
   async getOverview(): Promise<AnalyticsOverview> {
-    const [productCount] = await prisma.$queryRaw<[{ count: number }]>`SELECT COUNT(*) as count FROM Product`;
-    const totalProducts = productCount.count;
-    
+    let totalProducts = 0;
+    try {
+      const [productCount] = await prisma.$queryRaw<[{ count: number }]>`SELECT COUNT(*) as count FROM Product`;
+      totalProducts = productCount.count;
+    } catch {
+      // Prisma/DB 不可用时 fallback，使用 memory store 中的 product 数量
+    }
+
     const tasks = Array.from(taskStore.values()) as GenerationTask[];
-    
+
     const recentTasks = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
-      
+
       const dayTasks = tasks.filter(t => t.createdAt.startsWith(dateStr));
       const success = dayTasks.filter(t => t.status === 'success').length;
       const failed = dayTasks.filter(t => t.status === 'failed').length;
-      
+
       recentTasks.push({
         date: dateStr,
         count: dayTasks.length,

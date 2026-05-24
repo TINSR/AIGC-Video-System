@@ -19,7 +19,7 @@ export class MaterialController {
   async upload(req: Request, res: Response) {
     const { productId } = req.params;
     const file = req.file;
-    
+
     if (!file) {
       return res.status(400).json({
         success: false,
@@ -37,14 +37,14 @@ export class MaterialController {
 
     const { title, tags } = validateResult.data;
     const material = await materialService.upload(productId, file, title, tags);
-    
+
     res.status(201).json({ success: true, data: material });
   }
 
   async get(req: Request, res: Response) {
     const { id } = req.params;
     const material = await materialService.getById(id);
-    
+
     if (!material) {
       return res.status(404).json({
         success: false,
@@ -58,7 +58,7 @@ export class MaterialController {
   async update(req: Request, res: Response) {
     const { id } = req.params;
     const data = req.body;
-    
+
     const material = await materialService.update(id, data);
     if (!material) {
       return res.status(404).json({
@@ -73,7 +73,7 @@ export class MaterialController {
   async delete(req: Request, res: Response) {
     const { id } = req.params;
     const success = await materialService.delete(id);
-    
+
     if (!success) {
       return res.status(404).json({
         success: false,

@@ -19,13 +19,13 @@ export class MaterialService {
     const id = randomUUID();
     const ext = path.extname(file.originalname).toLowerCase();
     const type = ['.jpg', '.jpeg', '.png', '.gif'].includes(ext) ? 'image' : 'video';
-    
+
     const fileName = `${id}${ext}`;
     const uploadDir = process.env.UPLOAD_DIR || './uploads';
     const filePath = path.join(uploadDir, fileName);
-    
+
     await fs.writeFile(filePath, file.buffer);
-    
+
     const material: Material = {
       id,
       productId,
@@ -38,7 +38,7 @@ export class MaterialService {
       duration: type === 'video' ? 10 : undefined,
       createdAt: new Date().toISOString(),
     };
-    
+
     materialStore.set(id, material);
     return material;
   }
@@ -50,7 +50,7 @@ export class MaterialService {
   async update(id: string, data: Partial<Material>): Promise<Material | null> {
     const material = materialStore.get(id);
     if (!material) return null;
-    
+
     const updated = { ...material, ...data };
     materialStore.set(id, updated);
     return updated;

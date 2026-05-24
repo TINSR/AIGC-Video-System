@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import type { GenerationTask } from "@clipshop/shared";
 import { TaskLogList } from "../components/TaskLogList";
 import { TaskProgressTimeline } from "../components/TaskProgressTimeline";
-import { api } from "../services/api";
+import { api, resolveAssetUrl } from "../services/api";
 
 const terminalStatuses = new Set(["success", "failed"]);
 
@@ -98,7 +98,7 @@ export function TaskPage() {
               <Descriptions.Item label="provider">{task.provider}</Descriptions.Item>
               <Descriptions.Item label="outputVideoUrl">
                 {task.outputVideoUrl ? (
-                  <a href={task.outputVideoUrl} target="_blank" rel="noreferrer">
+                  <a href={resolveAssetUrl(task.outputVideoUrl)} target="_blank" rel="noreferrer">
                     {task.outputVideoUrl}
                   </a>
                 ) : (

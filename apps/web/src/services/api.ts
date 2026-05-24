@@ -18,6 +18,19 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 
+// 解析静态资源 URL：/outputs 和 /uploads 需要指向 API 服务器 origin
+// mock 模式下返回相对路径（同源），真实 API 模式下拼接 API origin
+export function resolveAssetUrl(path: string): string {
+  if (!path) return path;
+  if (USE_MOCK) return path;
+  // 从 API_BASE_URL 提取 origin，例如 http://localhost:3101/api -> http://localhost:3101
+  const apiOrigin = API_BASE_URL.replace(/\/api\/?$/, "");
+  if (path.startsWith("/outputs") || path.startsWith("/uploads")) {
+    return `${apiOrigin}${path}`;
+  }
+  return path;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
