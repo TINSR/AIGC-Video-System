@@ -22,38 +22,116 @@ export interface AnalyticsOverview {
 
 export class AnalyticsService {
   async getOverview(): Promise<AnalyticsOverview> {
-    const [productCount] = await prisma.$queryRaw<[{ count: number }]>`SELECT COUNT(*) as count FROM Product`;
-    const totalProducts = productCount.count;
-    
-    const tasks = Array.from(taskStore.values()) as GenerationTask[];
-    
+    let totalProducts = 0;
+    let totalMaterials = materialStore.size;
+    let totalCreativePlans = planStore.size;
+    let totalTasks = 0;
+    let successTasks = 0;
+    let failedTasks = 0;
+    let runningTasks = 0;
+    let pendingTasks = 0;
     const recentTasks = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
+
+    try {
+      // 优先从数据库读取统计数据
+      totalProducts = await prisma.product.count();
+      totalMaterials = await prisma.material.count();
+      totalCreativePlans = await prisma.creativePlan.count();
       
-      const dayTasks = tasks.filter(t => t.createdAt.startsWith(dateStr));
-      const success = dayTasks.filter(t => t.status === 'success').length;
-      const failed = dayTasks.filter(t => t.status === 'failed').length;
-      
-      recentTasks.push({
-        date: dateStr,
-        count: dayTasks.length,
-        success,
-        failed,
+      const taskStats = await prisma.generationTask.aggregate({
+        _count: {
+          id: true,
+          status: true
+        },
+        _groupBy: ['status']
       });
+
+      // 统计各状态任务数
+      for (const stat of taskStats) {
+        const count = stat._count.id;
+        switch (stat.status) {
+          case 'success':
+            successTasks = count;
+            break;
+          case 'failed':
+            failedTasks = count;
+            break;
+          case 'running':
+            runningTasks = count;
+            break;
+          case 'pending':
+            pendingTasks = count;
+            break;
+        }
+        totalTasks += count;
+      }
+
+      // 获取最近7天的任务统计
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const startOfDay = new Date(date.setHours(0, 0, 0, 0));
+        const endOfDay = new Date(date.setHours(23, 59, 59, 999));
+
+        const dayTasks = await prisma.generationTask.findMany({
+          where: {
+            createdAt: {
+              gte: startOfDay,
+              lte: endOfDay
+            }
+          },
+          select: { status: true }
+        });
+
+        const count = dayTasks.length;
+        const success = dayTasks.filter(t => t.status === 'success').length;
+        const failed = dayTasks.filter(t => t.status === 'failed').length;
+
+        recentTasks.push({
+          date: startOfDay.toISOString().split('T')[0],
+          count,
+          success,
+          failed,
+        });
+      }
+    } catch (error) {
+      console.warn('[AnalyticsService] 数据库读取失败，fallback到内存统计:', error.message);
+      
+      // fallback到内存统计
+      const tasks = Array.from(taskStore.values()) as GenerationTask[];
+      totalTasks = tasks.length;
+      successTasks = tasks.filter(t => t.status === 'success').length;
+      failedTasks = tasks.filter(t => t.status === 'failed').length;
+      runningTasks = tasks.filter(t => t.status === 'running').length;
+      pendingTasks = tasks.filter(t => t.status === 'pending').length;
+
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+
+        const dayTasks = tasks.filter(t => t.createdAt.startsWith(dateStr));
+        const success = dayTasks.filter(t => t.status === 'success').length;
+        const failed = dayTasks.filter(t => t.status === 'failed').length;
+
+        recentTasks.push({
+          date: dateStr,
+          count: dayTasks.length,
+          success,
+          failed,
+        });
+      }
     }
 
     return {
       totalProducts,
-      totalMaterials: materialStore.size,
-      totalCreativePlans: planStore.size,
-      totalTasks: tasks.length,
-      successTasks: tasks.filter(t => t.status === 'success').length,
-      failedTasks: tasks.filter(t => t.status === 'failed').length,
-      runningTasks: tasks.filter(t => t.status === 'running').length,
-      pendingTasks: tasks.filter(t => t.status === 'pending').length,
+      totalMaterials,
+      totalCreativePlans,
+      totalTasks,
+      successTasks,
+      failedTasks,
+      runningTasks,
+      pendingTasks,
       recentTasks,
     };
   }

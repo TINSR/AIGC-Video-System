@@ -3,6 +3,7 @@ import { MockAiProvider } from '../../providers/ai/MockAiProvider';
 import { ComplianceAgent } from '../../agents/ComplianceAgent';
 import { ContinuityAgent } from '../../agents/ContinuityAgent';
 import { planStore } from '../../memory-store';
+import prisma from '../../config/prisma';
 import type { CreativePlanInput, CreativePlanDraft } from '@shared/types/ai-providers';
 import type { CreativePlan, Scene, Material, Product } from '@shared/types';
 
@@ -51,7 +52,43 @@ export class CreativePlanService {
       })),
     };
 
-    // 写入共享内存存储
+    // 尝试写入MySQL，失败则fallback到内存
+    try {
+      await prisma.creativePlan.create({
+        data: {
+          id: creativePlan.id,
+          productId: creativePlan.productId,
+          status: creativePlan.status,
+          style: creativePlan.style,
+          title: creativePlan.title,
+          hook: creativePlan.hook,
+          adCopy: creativePlan.adCopy,
+          cta: creativePlan.cta,
+          visualBible: creativePlan.visualBible,
+          complianceWarnings: creativePlan.complianceWarnings,
+          continuityWarnings: creativePlan.continuityWarnings,
+          scenes: {
+            create: creativePlan.scenes.map(scene => ({
+              id: scene.id,
+              order: scene.order,
+              duration: scene.duration,
+              visualDescription: scene.visualDescription,
+              subtitle: scene.subtitle,
+              voiceover: scene.voiceover,
+              materialId: scene.materialId,
+              seedancePrompt: scene.seedancePrompt,
+              warnings: scene.warnings,
+              transition: scene.transition,
+            }))
+          }
+        },
+        include: { scenes: true }
+      });
+    } catch (error) {
+      console.warn('[CreativePlanService] 数据库写入失败，fallback到内存存储:', error.message);
+    }
+
+    // 始终写入内存，保证读取一致
     planStore.set(planId, creativePlan);
 
     return creativePlan;
@@ -107,6 +144,52 @@ export class CreativePlanService {
 
   // 获取创意方案详情
   async getCreativePlan(id: string): Promise<CreativePlan | null> {
+    // 优先从数据库读取
+    try {
+      const dbPlan = await prisma.creativePlan.findUnique({
+        where: { id },
+        include: { scenes: true }
+      });
+      
+      if (dbPlan) {
+        // 转换为接口需要的格式
+        const plan: CreativePlan = {
+          id: dbPlan.id,
+          productId: dbPlan.productId,
+          status: dbPlan.status as any,
+          style: dbPlan.style as any,
+          title: dbPlan.title,
+          hook: dbPlan.hook,
+          adCopy: dbPlan.adCopy,
+          cta: dbPlan.cta,
+          visualBible: dbPlan.visualBible as any,
+          complianceWarnings: (dbPlan.complianceWarnings as string[]) || [],
+          continuityWarnings: (dbPlan.continuityWarnings as string[]) || [],
+          createdAt: dbPlan.createdAt.toISOString(),
+          scenes: dbPlan.scenes.map(scene => ({
+            id: scene.id,
+            creativePlanId: scene.creativePlanId,
+            order: scene.order,
+            duration: scene.duration,
+            visualDescription: scene.visualDescription,
+            subtitle: scene.subtitle,
+            voiceover: scene.voiceover,
+            materialId: scene.materialId,
+            seedancePrompt: scene.seedancePrompt,
+            warnings: (scene.warnings as string[]) || [],
+            transition: scene.transition as any,
+          }))
+        };
+        
+        // 同步到内存，保证后续操作一致
+        planStore.set(id, plan);
+        return plan;
+      }
+    } catch (error) {
+      console.warn('[CreativePlanService] 数据库读取失败，fallback到内存存储:', error.message);
+    }
+    
+    // fallback到内存
     return planStore.get(id) ?? null;
   }
 
@@ -190,6 +273,49 @@ export class CreativePlanService {
       existing.scenes = data.scenes;
     }
 
+    // 尝试更新数据库
+    try {
+      const updateData: any = {};
+      
+      // 更新基础字段
+      for (const key of ['title', 'hook', 'adCopy', 'cta', 'complianceWarnings', 'continuityWarnings', 'status']) {
+        if (key in existing) {
+          updateData[key] = existing[key];
+        }
+      }
+      
+      if ('visualBible' in existing) {
+        updateData.visualBible = existing.visualBible;
+      }
+      
+      // 更新scenes
+      if ('scenes' in existing && existing.scenes) {
+        updateData.scenes = {
+          deleteMany: {},
+          create: existing.scenes.map(scene => ({
+            id: scene.id,
+            order: scene.order,
+            duration: scene.duration,
+            visualDescription: scene.visualDescription,
+            subtitle: scene.subtitle,
+            voiceover: scene.voiceover,
+            materialId: scene.materialId,
+            seedancePrompt: scene.seedancePrompt,
+            warnings: scene.warnings,
+            transition: scene.transition,
+          }))
+        };
+      }
+      
+      await prisma.creativePlan.update({
+        where: { id },
+        data: updateData
+      });
+    } catch (error) {
+      console.warn('[CreativePlanService] 数据库更新失败，fallback到内存存储:', error.message);
+    }
+
+    // 始终更新内存
     planStore.set(id, existing);
     return existing;
   }
