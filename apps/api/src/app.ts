@@ -22,14 +22,14 @@ app.use('/outputs', express.static(path.join(__dirname, '../outputs')));
 import productRoutes from './modules/products/product.routes';
 import creativePlanRoutes from './modules/creative-plans/creativePlan.routes';
 import renderRoutes from './modules/render/render.routes';
-// import materialRoutes from './modules/materials/material.routes';
-// import analyticsRoutes from './modules/analytics/analytics.routes';
+import materialRoutes from './modules/materials/material.routes';
+import analyticsRoutes from './modules/analytics/analytics.routes';
 
 app.use('/api/products', productRoutes);
 app.use('/api', creativePlanRoutes);
 app.use('/api', renderRoutes);
-// app.use('/api/materials', materialRoutes);
-// app.use('/api/analytics', analyticsRoutes);
+app.use('/api', materialRoutes);
+app.use('/api', analyticsRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok', timestamp: new Date().toISOString() } });
