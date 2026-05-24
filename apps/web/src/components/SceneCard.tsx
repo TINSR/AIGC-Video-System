@@ -1,5 +1,5 @@
 import { ClockCircleOutlined, WarningOutlined } from "@ant-design/icons";
-import { Button, Space, Tag, Typography } from "antd";
+import { Button, Descriptions, Space, Tag, Typography } from "antd";
 import type { Material, Scene } from "@clipshop/shared";
 
 type Props = {
@@ -19,10 +19,21 @@ export function SceneCard({ scene, material, active, onSelect }: Props) {
         <Space wrap>
           <Tag color="purple">镜头 {scene.order}</Tag>
           <Tag icon={<ClockCircleOutlined />}>{scene.duration}s</Tag>
-          {scene.warnings.length > 0 ? <Tag color="warning" icon={<WarningOutlined />}>需检查</Tag> : null}
+          <Tag>{scene.transition}</Tag>
+          {scene.warnings.length > 0 ? (
+            <Tag color="warning" icon={<WarningOutlined />}>
+              需检查
+            </Tag>
+          ) : null}
         </Space>
         <Typography.Title level={5}>{scene.subtitle}</Typography.Title>
         <Typography.Paragraph ellipsis={{ rows: 2 }}>{scene.visualDescription}</Typography.Paragraph>
+        <Descriptions column={1} size="small" className="scene-details">
+          <Descriptions.Item label="旁白">{scene.voiceover}</Descriptions.Item>
+          <Descriptions.Item label="Seedance Prompt">
+            <Typography.Text ellipsis>{scene.seedancePrompt}</Typography.Text>
+          </Descriptions.Item>
+        </Descriptions>
         <Button size="small">编辑分镜</Button>
       </div>
     </button>

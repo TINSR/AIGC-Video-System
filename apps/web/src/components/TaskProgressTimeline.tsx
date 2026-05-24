@@ -1,4 +1,4 @@
-import { ClockCircleOutlined, CheckCircleOutlined, LoadingOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, ClockCircleOutlined, LoadingOutlined } from "@ant-design/icons";
 import { Progress, Steps } from "antd";
 import type { GenerationTask } from "@clipshop/shared";
 
@@ -10,16 +10,17 @@ type Props = {
 
 export function TaskProgressTimeline({ task }: Props) {
   const current = task.status === "success" ? 5 : Math.min(Math.floor(task.progress / 20), 4);
+  const progressStatus = task.status === "failed" ? "exception" : task.status === "success" ? "success" : "active";
 
   return (
     <div className="surface">
-      <Progress percent={task.progress} status={task.status === "failed" ? "exception" : "active"} />
+      <Progress percent={task.progress} status={progressStatus} />
       <Steps
         current={current}
         items={steps.map((title, index) => ({
           title,
           icon:
-            index < current ? (
+            index < current || task.status === "success" ? (
               <CheckCircleOutlined />
             ) : index === current && task.status === "running" ? (
               <LoadingOutlined />
