@@ -18,14 +18,27 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 
+// 解析静态资源 URL：/outputs 和 /uploads 需要指向 API 服务器 origin
+// mock 模式下返回相对路径（同源），真实 API 模式下拼接 API origin
+export function resolveAssetUrl(path: string): string {
+  if (!path) return path;
+  if (USE_MOCK) return path;
+  // 从 API_BASE_URL 提取 origin，例如 http://localhost:3101/api -> http://localhost:3101
+  const apiOrigin = API_BASE_URL.replace(/\/api\/?$/, "");
+  if (path.startsWith("/outputs") || path.startsWith("/uploads")) {
+    return `${apiOrigin}${path}`;
+  }
+  return path;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init
   });
-  const payload = await response.json();
-  if (!payload.success) {
-    throw new Error(payload.error?.message ?? "请求失败");
+  const payload = await response.json().catch(() => undefined);
+  if (!response.ok || !payload?.success) {
+    throw new Error(payload?.error?.message ?? `请求失败：${response.status}`);
   }
   return payload.data as T;
 }
@@ -83,15 +96,20 @@ export const api = {
       });
     }
     await wait();
-    const scene = creativePlans[0].scenes.find((item) => item.id === sceneId)!;
-    return { ...scene, ...input };
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
+    const updated = { ...scene, ...input };
+    plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
+    return updated;
   },
   async approvePlan(planId: string): Promise<CreativePlan> {
     if (!USE_MOCK) {
       return request<CreativePlan>(`/creative-plans/${planId}/approve`, { method: "POST" });
     }
     await wait();
-    return { ...creativePlans[0], id: planId, status: "approved" };
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    plan.status = "approved";
+    return { ...plan, id: planId, status: "approved" };
   },
   async renderPlan(planId: string): Promise<GenerationTask> {
     if (!USE_MOCK) {
@@ -107,12 +125,27 @@ export const api = {
       });
     }
     await wait();
-    return generationTasks[0];
+    return { ...generationTasks[0], creativePlanId: planId };
   },
   async getTask(taskId: string): Promise<GenerationTask> {
     if (!USE_MOCK) return request<GenerationTask>(`/tasks/${taskId}`);
     await wait();
     return generationTasks.find((task) => task.id === taskId) ?? generationTasks[0];
+  },
+  async retryTask(taskId: string): Promise<GenerationTask> {
+    if (!USE_MOCK) {
+      return request<GenerationTask>(`/tasks/${taskId}/retry`, { method: "POST" });
+    }
+    await wait();
+    const task = generationTasks.find((item) => item.id === taskId) ?? generationTasks[0];
+    return {
+      ...task,
+      status: "pending",
+      progress: 0,
+      currentStep: "任务已重新创建",
+      errorMessage: undefined,
+      updatedAt: new Date().toISOString()
+    };
   },
   async getAnalytics(): Promise<AnalyticsOverview> {
     if (!USE_MOCK) return request<AnalyticsOverview>("/analytics/overview");

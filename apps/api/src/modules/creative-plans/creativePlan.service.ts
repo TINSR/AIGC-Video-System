@@ -75,7 +75,7 @@ export class CreativePlanService {
               visualDescription: scene.visualDescription,
               subtitle: scene.subtitle,
               voiceover: scene.voiceover,
-              materialId: scene.materialId,
+              materialId: scene.materialId ?? null,
               seedancePrompt: scene.seedancePrompt,
               warnings: scene.warnings,
               transition: scene.transition,
@@ -85,7 +85,8 @@ export class CreativePlanService {
         include: { scenes: true }
       });
     } catch (error) {
-      console.warn('[CreativePlanService] 数据库写入失败，fallback到内存存储:', error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库写入失败，fallback到内存存储:', message);
     }
 
     // 始终写入内存，保证读取一致
@@ -150,9 +151,8 @@ export class CreativePlanService {
         where: { id },
         include: { scenes: true }
       });
-      
+
       if (dbPlan) {
-        // 转换为接口需要的格式
         const plan: CreativePlan = {
           id: dbPlan.id,
           productId: dbPlan.productId,
@@ -174,21 +174,22 @@ export class CreativePlanService {
             visualDescription: scene.visualDescription,
             subtitle: scene.subtitle,
             voiceover: scene.voiceover,
-            materialId: scene.materialId,
+            materialId: scene.materialId ?? undefined,
             seedancePrompt: scene.seedancePrompt,
             warnings: (scene.warnings as string[]) || [],
             transition: scene.transition as any,
           }))
         };
-        
+
         // 同步到内存，保证后续操作一致
         planStore.set(id, plan);
         return plan;
       }
     } catch (error) {
-      console.warn('[CreativePlanService] 数据库读取失败，fallback到内存存储:', error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库读取失败，fallback到内存存储:', message);
     }
-    
+
     // fallback到内存
     return planStore.get(id) ?? null;
   }
@@ -275,21 +276,18 @@ export class CreativePlanService {
 
     // 尝试更新数据库
     try {
-      const updateData: any = {};
-      
-      // 更新基础字段
-      for (const key of ['title', 'hook', 'adCopy', 'cta', 'complianceWarnings', 'continuityWarnings', 'status']) {
-        if (key in existing) {
-          updateData[key] = existing[key];
-        }
-      }
-      
-      if ('visualBible' in existing) {
-        updateData.visualBible = existing.visualBible;
-      }
-      
-      // 更新scenes
-      if ('scenes' in existing && existing.scenes) {
+      const updateData: any = {
+        title: existing.title,
+        hook: existing.hook,
+        adCopy: existing.adCopy,
+        cta: existing.cta,
+        complianceWarnings: existing.complianceWarnings,
+        continuityWarnings: existing.continuityWarnings,
+        status: existing.status,
+        visualBible: existing.visualBible,
+      };
+
+      if (existing.scenes) {
         updateData.scenes = {
           deleteMany: {},
           create: existing.scenes.map(scene => ({
@@ -299,20 +297,21 @@ export class CreativePlanService {
             visualDescription: scene.visualDescription,
             subtitle: scene.subtitle,
             voiceover: scene.voiceover,
-            materialId: scene.materialId,
+            materialId: scene.materialId ?? null,
             seedancePrompt: scene.seedancePrompt,
             warnings: scene.warnings,
             transition: scene.transition,
           }))
         };
       }
-      
+
       await prisma.creativePlan.update({
         where: { id },
         data: updateData
       });
     } catch (error) {
-      console.warn('[CreativePlanService] 数据库更新失败，fallback到内存存储:', error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库更新失败，fallback到内存存储:', message);
     }
 
     // 始终更新内存
@@ -326,6 +325,18 @@ export class CreativePlanService {
     if (!existing) return null;
 
     existing.status = 'approved';
+
+    // 尝试更新数据库
+    try {
+      await prisma.creativePlan.update({
+        where: { id },
+        data: { status: 'approved' }
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库更新失败，fallback到内存存储:', message);
+    }
+
     planStore.set(id, existing);
     return existing;
   }

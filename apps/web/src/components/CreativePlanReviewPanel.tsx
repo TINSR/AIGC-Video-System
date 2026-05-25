@@ -1,4 +1,4 @@
-import { Button, Col, Row, Space, Typography, message } from "antd";
+import { Alert, Button, Col, Row, Space, Typography, message } from "antd";
 import { useMemo, useState } from "react";
 import type { CreativePlan, Material, Scene } from "@clipshop/shared";
 import { api } from "../services/api";
@@ -15,8 +15,14 @@ type Props = {
 };
 
 export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
+  const [currentPlan, setCurrentPlan] = useState(plan);
   const [scenes, setScenes] = useState(plan.scenes);
   const [selectedSceneId, setSelectedSceneId] = useState(plan.scenes[0]?.id);
+  const [savingSceneId, setSavingSceneId] = useState<string>();
+  const [approving, setApproving] = useState(false);
+  const [rendering, setRendering] = useState(false);
+  const [error, setError] = useState<string>();
+
   const selectedScene = useMemo(
     () => scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0],
     [scenes, selectedSceneId]
@@ -25,15 +31,53 @@ export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
   const materialMap = new Map(materials.map((material) => [material.id, material]));
 
   const saveScene = async (patch: Partial<Scene>) => {
-    const updated = await api.updateScene(plan.id, selectedScene.id, patch);
-    setScenes((current) => current.map((scene) => (scene.id === updated.id ? updated : scene)));
-    message.success("分镜已保存");
+    if (!selectedScene) return;
+    setError(undefined);
+    setSavingSceneId(selectedScene.id);
+    try {
+      const updated = await api.updateScene(currentPlan.id, selectedScene.id, patch);
+      setScenes((current) => current.map((scene) => (scene.id === updated.id ? updated : scene)));
+      message.success("分镜已保存");
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "分镜保存失败";
+      setError(messageText);
+      message.error(messageText);
+    } finally {
+      setSavingSceneId(undefined);
+    }
   };
 
-  const approveAndRender = async () => {
-    await api.approvePlan(plan.id);
-    const task = await api.renderPlan(plan.id);
-    onRender(task.id);
+  const approvePlan = async () => {
+    setError(undefined);
+    setApproving(true);
+    try {
+      const approved = await api.approvePlan(currentPlan.id);
+      setCurrentPlan(approved);
+      if (approved.scenes?.length) setScenes(approved.scenes);
+      message.success("方案已审核通过");
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "审核失败";
+      setError(messageText);
+      message.error(messageText);
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const renderPlan = async () => {
+    setError(undefined);
+    setRendering(true);
+    try {
+      const task = await api.renderPlan(currentPlan.id);
+      message.success("生成任务已创建");
+      onRender(task.id);
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "创建生成任务失败";
+      setError(messageText);
+      message.error(messageText);
+    } finally {
+      setRendering(false);
+    }
   };
 
   return (
@@ -42,22 +86,39 @@ export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
         <div>
           <Typography.Text type="secondary">CreativePlan Review</Typography.Text>
           <Typography.Title level={2}>方案审核与分镜编辑</Typography.Title>
+          <Typography.Paragraph>
+            先确认脚本、Visual Bible 和分镜，再审核通过。审核通过后才会创建视频生成任务。
+          </Typography.Paragraph>
         </div>
-        <Button type="primary" size="large" onClick={approveAndRender}>
-          确认生成视频
-        </Button>
+        <Space wrap>
+          <Button type="primary" size="large" loading={approving} onClick={approvePlan}>
+            审核通过
+          </Button>
+          <Button
+            size="large"
+            loading={rendering}
+            disabled={currentPlan.status !== "approved"}
+            onClick={renderPlan}
+          >
+            创建生成任务
+          </Button>
+        </Space>
       </section>
+      {error ? <Alert type="error" showIcon message={error} /> : null}
+      {currentPlan.status !== "approved" ? (
+        <Alert type="info" showIcon message="审核通过前不会触发 render，可放心编辑分镜。" />
+      ) : null}
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={12}>
-          <ScriptResultPanel plan={plan} />
+          <ScriptResultPanel plan={currentPlan} />
         </Col>
         <Col xs={24} xl={12}>
-          <VisualBiblePanel visualBible={plan.visualBible} />
+          <VisualBiblePanel visualBible={currentPlan.visualBible} />
         </Col>
       </Row>
       <ComplianceWarningList
-        complianceWarnings={plan.complianceWarnings}
-        continuityWarnings={plan.continuityWarnings}
+        complianceWarnings={currentPlan.complianceWarnings}
+        continuityWarnings={currentPlan.continuityWarnings}
       />
       <Row gutter={[20, 20]} align="top">
         <Col xs={24} xl={14}>
@@ -67,14 +128,23 @@ export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
                 key={scene.id}
                 scene={scene}
                 material={scene.materialId ? materialMap.get(scene.materialId) : undefined}
-                active={scene.id === selectedScene.id}
+                active={selectedScene ? scene.id === selectedScene.id : false}
                 onSelect={() => setSelectedSceneId(scene.id)}
               />
             ))}
           </div>
         </Col>
         <Col xs={24} xl={10}>
-          <SceneEditorPanel scene={selectedScene} materials={materials} onSave={saveScene} />
+          {selectedScene ? (
+            <SceneEditorPanel
+              scene={selectedScene}
+              materials={materials}
+              saving={savingSceneId === selectedScene.id}
+              onSave={saveScene}
+            />
+          ) : (
+            <Alert type="warning" showIcon message="当前方案还没有分镜。" />
+          )}
         </Col>
       </Row>
     </Space>

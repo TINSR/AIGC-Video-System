@@ -57,6 +57,7 @@ export type SeedanceTaskStatus = Omit<SeedanceRenderOutput, 'clips'>;
 export interface FFmpegComposeProvider {
   compose(input: FinalComposeInput): Promise<FinalComposeOutput>;
   generateFromPlan(input: GenerateFromPlanInput): Promise<FinalComposeOutput>;
+  checkFFmpegAvailability(): Promise<{ available: boolean; version?: string; error?: string }>;
 }
 
 export interface FinalComposeInput {

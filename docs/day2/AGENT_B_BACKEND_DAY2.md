@@ -1,115 +1,206 @@
-# Agent B Day 2 任务书：后端接口开发与联调
+# Agent B Day 2 任务书：补齐缺口 API 与规划持久化
 
-> 角色：后端 Agent  
-> 负责范围：完成所有核心业务接口、文件上传、队列联调、接口测试
-> 完成时限：Day2 结束前所有接口可被前端调用
+> 角色：后端 Agent
+> 基线分支：`codex/integrate-ai-video`
+> 目标：不要重做已经跑通的 CreativePlan/render 链路。集中补 Materials/Analytics 缺口，并给 Prisma/BullMQ 迁移一个可执行边界。
 
 ---
 
-## 1. 你的目标
-完成所有核心业务模块的接口开发，确保前端可以调用所有核心链路接口，实现最小可用流程：
+## 1. 当前后端状态
+
+已经可用：
+
+- `GET /api/health`
+- Products API
+- CreativePlan API
+- Render API
+- memory store：
+  - `planStore`
+  - `taskStore`
+  - `taskMaterialsStore`
+- API build 通过。
+- `generate -> list -> get -> approve -> render -> get task` 已验证。
+
+当前缺口：
+
+- Materials API 尚未实现，但前端调用 `GET /api/products/:id/materials`。
+- Analytics API 尚未实现，但前端调用 `GET /api/analytics/overview`。
+- CreativePlan/render 仍未迁到 Prisma。
+- `renderWorker.ts` 与新的 `RenderService` 尚未统一。
+
+---
+
+## 2. P0 任务：补 Materials API
+
+前端已经调用：
+
 ```text
-创建商品 -> 上传素材 -> 生成创意方案 -> 审核确认 -> 创建视频任务 -> 查询进度 -> 返回视频地址
+GET /api/products/:id/materials
+```
+
+Day 2 最低要求：
+
+```text
+GET /api/products/:id/materials
+```
+
+必须可用，并返回符合共享契约的 `Material[]`。
+
+最低可接受实现：
+
+- 先用 memory/demo materials。
+- 不阻塞前端联调。
+- 返回字段严格符合共享类型：
+  - `id`
+  - `productId`
+  - `type`
+  - `fileUrl`
+  - `thumbnailUrl`，可选
+  - `title`
+  - `tags`
+  - `aiDescription`，可选
+  - `duration`，可选
+  - `createdAt`
+
+如果时间充足，再补：
+
+```text
+POST /api/products/:id/materials
+PUT /api/materials/:id
+DELETE /api/materials/:id
 ```
 
 ---
 
-## 2. Day2 开发优先级
-### P0 最高优先级（必须完成，支撑前端核心流程）
-1. 素材模块4个接口
-2. 创意方案核心接口（生成、查询、审核）
-3. 视频渲染任务接口（创建、查询、重试）
-4. 本地文件上传服务
+## 3. P0 任务：补 Analytics overview
 
-### P1 次高优先级（当天完成）
-1. 创意方案编辑接口（更新方案、更新分镜、分镜重生成）
-2. 数据看板基础接口
-3. 所有接口参数校验和错误处理
-4. 接口文档编写
+前端已经调用：
 
----
+```text
+GET /api/analytics/overview
+```
 
-## 3. 详细开发任务清单
-### 3.1 素材模块（P0）
-实现4个接口，支持图片/视频素材上传、管理：
-| 方法 | 路径 | 功能说明 | 技术要点 |
-| --- | --- | --- | --- |
-| `POST` | `/api/products/:id/materials` | 上传素材 | 使用Multer实现文件上传，支持图片(jpg/png/webp)和视频(mp4/mov)，自动生成缩略图，文件保存到uploads目录 |
-| `GET` | `/api/products/:id/materials` | 素材列表 | 分页返回指定商品下的所有素材，支持按类型筛选 |
-| `PUT` | `/api/materials/:id` | 更新素材 | 支持修改素材标题、标签、AI描述 |
-| `DELETE` | `/api/materials/:id` | 删除素材 | 同时删除本地文件和数据库记录 |
+Day 2 最低要求：
 
-字段要求完全遵循`SHARED_CONTRACT_DAY1.md`中的`Material`类型定义。
+- 返回 mock overview。
+- 不让 `AnalyticsPage` 报错。
+- 字段以当前共享类型 `AnalyticsOverview` 为准。
+- 可以从 memory store 粗略统计：
+  - 商品数
+  - CreativePlan 数
+  - 任务数
+  - 成功/失败任务数
 
 ---
 
-### 3.2 创意方案模块（P0 + P1）
-实现创意方案全生命周期接口：
-| 优先级 | 方法 | 路径 | 功能说明 |
-| --- | --- | --- | --- |
-| P0 | `POST` | `/api/products/:id/creative-plans/generate` | 生成创意方案 | 接收风格、时长等参数，先对接MockAiProvider返回固定格式的CreativePlan数据 |
-| P0 | `GET` | `/api/products/:id/creative-plans` | 创意方案列表 | 返回指定商品下的所有创意方案 |
-| P0 | `GET` | `/api/creative-plans/:id` | 创意方案详情 | 包含所有分镜信息 |
-| P0 | `POST` | `/api/creative-plans/:id/approve` | 确认方案 | 修改方案状态为approved，可直接触发渲染任务 |
-| P1 | `PUT` | `/api/creative-plans/:id` | 更新方案 | 支持修改广告词、Hook、CTA、Visual Bible |
-| P1 | `PUT` | `/api/creative-plans/:id/scenes/:sceneId` | 更新分镜 | 支持修改分镜的时长、字幕、配音、SeedancePrompt等 |
-| P1 | `POST` | `/api/creative-plans/:id/scenes/:sceneId/regenerate` | 重生成单分镜 | 调用MockAI重新生成分镜内容 |
+## 4. P0 任务：保持现有链路不坏
 
-所有字段完全遵循`CreativePlan`和`Scene`类型定义。
+改动后必须继续可用：
 
----
+```text
+POST /api/products/product_001/creative-plans/generate
+GET /api/products/product_001/creative-plans
+GET /api/creative-plans/:id
+PUT /api/creative-plans/:id
+PUT /api/creative-plans/:id/scenes/:sceneId
+POST /api/creative-plans/:id/approve
+POST /api/creative-plans/:id/render
+GET /api/tasks/:id
+POST /api/tasks/:id/retry
+```
 
-### 3.3 视频渲染任务模块（P0）
-实现视频生成任务全流程接口：
-| 方法 | 路径 | 功能说明 | 技术要点 |
-| --- | --- | --- | --- |
-| `POST` | `/api/creative-plans/:id/render` | 创建生成任务 | 接收渲染参数，创建GenerationTask记录，推入BullMQ队列，返回任务ID |
-| `GET` | `/api/tasks/:id` | 查询任务详情 | 实时返回任务状态、进度、当前步骤、日志列表、输出视频地址 |
-| `POST` | `/api/tasks/:id/retry` | 失败重试 | 重新将失败任务推入队列执行 |
+特别注意：
 
-任务状态流转和进度完全遵循文档约定的8个阶段（0%~100%）。
+- `render` 仍要求 plan 已 approved。
+- render 失败时要返回清晰 `errorMessage` 和 `logs`。
+- 不要把 render 改成依赖真实 Seedance。
 
 ---
 
-### 3.4 基础服务完善（P0）
-1. 实现`LocalStorageProvider`：封装文件上传、删除、访问路径生成逻辑
-2. 实现`MockAiProvider`：模拟AI生成CreativePlan和分镜，返回符合格式的测试数据
-3. 完善参数校验：所有接口使用Zod做参数校验，统一错误返回格式
-4. 实现CORS配置，支持前端跨域调用
+## 5. P1 任务：Prisma 迁移方案
+
+当前不要半迁移导致链路断裂。
+
+请至少输出一份明确方案：
+
+```text
+第一步：CreativePlan / Scene 迁到 Prisma
+第二步：GenerationTask / TaskLog 迁到 Prisma
+第三步：Materials 迁到 Prisma
+第四步：移除 memory store
+```
+
+如果当天能实现，优先迁：
+
+```text
+CreativePlan + Scene
+```
+
+但必须保证：
+
+```text
+generate -> list -> get -> approve -> render -> get task
+```
+
+仍然可跑。
 
 ---
 
-### 3.5 数据看板模块（P1）
-| 方法 | 路径 | 功能说明 |
-| --- | --- | --- |
-| `GET` | `/api/analytics/overview` | 总览数据 | 返回商品总数、素材总数、生成视频总数、成功/失败任务数 |
-| `GET` | `/api/analytics/videos/:videoId` | 单视频数据 | 返回视频生成耗时、参数等信息 |
+## 6. P1 任务：BullMQ 与 RenderService 边界
+
+当前存在两套逻辑：
+
+```text
+main 原有 renderWorker.ts
+新的 RenderService / FFmpegComposeProvider
+```
+
+Day 2 至少要做到以下之一：
+
+- 文档说明 Day 2 仍以 `RenderService + memory task` 为主链路；
+- 或把 BullMQ worker 接到新的 `RenderService/FFmpegComposeProvider`；
+- 不允许同一个 render API 同时触发两套任务执行逻辑。
 
 ---
 
-## 4. Day2 交付物
-1. 所有核心接口代码实现，可直接运行调用
-2. 接口测试用例（Postman集合或curl示例）
-3. 接口文档（包含每个接口的请求参数、响应示例、错误码说明）
-4. MockAI服务实现，可生成符合格式的创意方案数据
-5. 本地文件上传服务完整实现
+## 7. 禁止事项
+
+- 不要修改现有 API 路径。
+- 不要破坏 CreativePlan/render 链路。
+- 不要删除 memory store，除非 Prisma 完整替代。
+- 不要让 render 依赖真实 Seedance。
+- 不要直接合 `main`。
 
 ---
 
-## 5. 验收标准
-所有接口必须通过以下验证：
-1. ✅ 前端可以调用`POST /api/products/:id/materials`成功上传图片和视频
-2. ✅ 前端可以调用`POST /api/products/:id/creative-plans/generate`拿到符合格式的CreativePlan数据
-3. ✅ 前端可以调用`POST /api/creative-plans/:id/approve`确认方案并创建渲染任务
-4. ✅ 前端可以调用`GET /api/tasks/:id`实时查询任务进度，直到返回成功的视频地址
-5. ✅ 生成的视频文件可以通过返回的`outputVideoUrl`直接访问播放
-6. ✅ 所有错误情况返回符合格式的错误信息，参数校验友好提示
+## 8. 验收标准
+
+- [ ] `npm --prefix apps/api run db:generate` 通过。
+- [ ] `npm --prefix apps/api run build` 通过。
+- [ ] `GET /api/products/product_001/materials` 可用。
+- [ ] `GET /api/analytics/overview` 可用。
+- [ ] CreativePlan generate/list/get/update/approve 仍可用。
+- [ ] render/get task/retry 仍可用。
+- [ ] render failed 时 `errorMessage` 和 `logs` 清楚。
+- [ ] 如果未迁 Prisma，说明 memory store 临时范围和迁移计划。
+- [ ] 如果未整合 BullMQ，说明当前任务执行主链路。
 
 ---
 
-## 6. 注意事项
-1. 所有接口严格遵循`SHARED_CONTRACT_DAY1.md`的类型定义，字段名、类型必须和前端完全对齐
-2. 上传的文件命名使用`cuid() + 扩展名`，避免重名
-3. 任务日志必须记录完整，便于排查问题
-4. 不要硬编码任何路径或配置，全部从环境变量读取
-5. 先完成Mock实现，不依赖真实AI和视频生成服务，确保接口先跑通
+## 9. 给后端 Coding Agent 的提示词
+
+```text
+你是后端 Agent，请基于 codex/integrate-ai-video 分支继续。
+注意：CreativePlan/render memory 链路已经可用，不要重做。
+
+任务：
+1. 补 GET /api/products/:id/materials，至少返回符合共享类型的 Material[]；
+2. 补 GET /api/analytics/overview，至少返回 mock overview；
+3. 保持 generate -> approve -> render -> get task 链路不坏；
+4. render failed 时必须有清晰 errorMessage/logs；
+5. 输出 Prisma 迁移方案，能做则优先迁 CreativePlan/Scene；
+6. 梳理 renderWorker 与 RenderService 的关系，不要双链路触发。
+
+所有字段遵守 docs/day1/SHARED_CONTRACT_DAY1.md。
+完成后输出改动文件、验证命令、接口结果、仍未解决的技术债。
+```

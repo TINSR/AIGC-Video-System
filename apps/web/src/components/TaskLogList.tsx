@@ -1,4 +1,4 @@
-import { List, Tag } from "antd";
+import { Empty, List, Tag } from "antd";
 import type { TaskLog } from "@clipshop/shared";
 
 type Props = {
@@ -11,6 +11,7 @@ export function TaskLogList({ logs }: Props) {
       className="surface"
       header="任务日志"
       dataSource={logs}
+      locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无日志" /> }}
       renderItem={(log) => (
         <List.Item>
           <List.Item.Meta

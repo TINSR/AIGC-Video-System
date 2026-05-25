@@ -13,19 +13,6 @@ import type { Material } from '@shared/types';
 
 const execAsync = promisify(exec);
 
-let ffmpegAvailable: boolean | null = null;
-
-async function checkFFmpegAvailable(): Promise<boolean> {
-  if (ffmpegAvailable !== null) return ffmpegAvailable;
-  try {
-    await execAsync('ffmpeg -version');
-    ffmpegAvailable = true;
-  } catch (e) {
-    ffmpegAvailable = false;
-  }
-  return ffmpegAvailable;
-}
-
 function formatSrtTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -35,13 +22,59 @@ function formatSrtTime(seconds: number): string {
 }
 
 export class FFmpegComposeProvider implements IFFmpegComposeProvider {
-  private ffmpegPath = 'ffmpeg';
+  private ffmpegPath: string;
   private tempDir = process.env.TEMP || './temp';
 
   constructor() {
+    this.ffmpegPath = this.resolveFFmpegPath();
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true });
     }
+  }
+
+  // 解析 FFmpeg 路径：环境变量 > 常见安装位置 > PATH
+  private resolveFFmpegPath(): string {
+    // 1. 环境变量指定
+    if (process.env.FFMPEG_PATH && fs.existsSync(process.env.FFMPEG_PATH)) {
+      return process.env.FFMPEG_PATH;
+    }
+
+    // 2. Windows 常见安装位置
+    if (process.platform === 'win32') {
+      const candidates = [
+        path.join(process.env.APPDATA || '', 'TRAE SOLO CN/ModularData/ai-agent/vm/tools/app/ffmpeg/ffmpeg.exe'),
+        'C:/ffmpeg/bin/ffmpeg.exe',
+        'C:/Program Files/ffmpeg/bin/ffmpeg.exe',
+      ];
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return candidate;
+      }
+    }
+
+    // 3. 默认从 PATH 查找
+    return 'ffmpeg';
+  }
+
+  // 检查 FFmpeg 是否可用
+  async checkFFmpegAvailability(): Promise<{ available: boolean; version?: string; error?: string }> {
+    try {
+      const { stdout } = await execAsync(`"${this.ffmpegPath}" -version`);
+      const versionMatch = stdout.match(/ffmpeg version (\S+)/);
+      return {
+        available: true,
+        version: versionMatch ? versionMatch[1] : 'unknown',
+      };
+    } catch (error) {
+      return {
+        available: false,
+        error: `FFmpeg 不可用 (${this.ffmpegPath}): ${error instanceof Error ? error.message : '未知错误'}`,
+      };
+    }
+  }
+
+  // 获取带引号的 ffmpeg 路径（用于 exec 命令）
+  private get quotedFFmpegPath(): string {
+    return `"${this.ffmpegPath}"`;
   }
 
   // 路径解析：将各种形式的 media URL 转为可用的本地路径
@@ -73,6 +106,20 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
     return local;
   }
 
+  // 查找可用的中文字体文件
+  private findChineseFont(): string | null {
+    const candidates = [
+      'C:/Windows/Fonts/msyh.ttc',     // 微软雅黑
+      'C:/Windows/Fonts/simhei.ttf',    // 黑体
+      'C:/Windows/Fonts/simsun.ttc',    // 宋体
+      '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc', // Linux 文泉驿
+    ];
+    for (const font of candidates) {
+      if (fs.existsSync(font)) return font;
+    }
+    return null;
+  }
+
   // 生成纯色背景 + 字幕的兜底片段
   private async generateSolidColorClip(
     duration: number,
@@ -84,28 +131,33 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
       const escapedSubtitle = subtitle
         .replace(/\\/g, '\\\\')
         .replace(/:/g, '\\:')
-        .replace(/'/g, "'\\''");
+        .replace(/'/g, "'\\''")
+        .replace(/\[/g, '\\[')
+        .replace(/\]/g, '\\]');
+      // 使用 fontfile 指定字体，避免 fontconfig 问题
+      const fontFile = this.findChineseFont();
+      const fontParam = fontFile ? `fontfile='${fontFile.replace(/\\/g, '/').replace(/:/g, '\\:')}'` : 'fontsize=48';
       await execAsync(
-        `${this.ffmpegPath} -f lavfi -i "${colorFilter}" -t ${duration} -vf "drawtext=text='${escapedSubtitle}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.5:boxborderw=10" -c:v libx264 -pix_fmt yuv420p "${outputPath}" -y`
+        `${this.quotedFFmpegPath} -f lavfi -i "${colorFilter}" -t ${duration} -vf "drawtext=text='${escapedSubtitle}':${fontParam}:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.5:boxborderw=10" -c:v libx264 -pix_fmt yuv420p "${outputPath}" -y`
       );
     } else {
       await execAsync(
-        `${this.ffmpegPath} -f lavfi -i "${colorFilter}" -t ${duration} -c:v libx264 -pix_fmt yuv420p "${outputPath}" -y`
+        `${this.quotedFFmpegPath} -f lavfi -i "${colorFilter}" -t ${duration} -c:v libx264 -pix_fmt yuv420p "${outputPath}" -y`
       );
     }
   }
 
   async compose(input: FinalComposeInput): Promise<FinalComposeOutput> {
     try {
-      const ffmpegOk = await checkFFmpegAvailable();
-      if (!ffmpegOk) {
+      const ffmpegCheck = await this.checkFFmpegAvailability();
+      if (!ffmpegCheck.available) {
         return {
           success: false,
           videoUrl: '',
           duration: 0,
           resolution: input.resolution || '1080p',
           fileSize: 0,
-          errorMessage: 'FFmpeg 不可用，请先安装 FFmpeg 并配置到环境变量中',
+          errorMessage: `FFmpeg 不可用：${ffmpegCheck.error}\n\n安装方法：\n1. winget install Gyan.FFmpeg\n2. 或下载 https://github.com/BtbN/FFmpeg-Builds/releases 并添加到 PATH\n3. 或设置环境变量 FFMPEG_PATH 指向 ffmpeg.exe 的完整路径`,
         };
       }
       const { clips, bgmUrl, voiceoverUrl, outputPath, resolution = '1080p', aspectRatio = '9:16' } = input;
@@ -141,9 +193,9 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
         if (resolvedPath && fs.existsSync(resolvedPath)) {
           try {
             if (resolvedPath.endsWith('.jpg') || resolvedPath.endsWith('.jpeg') || resolvedPath.endsWith('.png')) {
-              await execAsync(`${this.ffmpegPath} -loop 1 -i "${resolvedPath}" -t ${clip.duration} -filter_complex "[0:v]zoompan=z='min(zoom+0.001,1.2)':d=${clip.duration * 25}:s=1080x1920,fps=25[v]" -map "[v]" -c:v libx264 -pix_fmt yuv420p "${tempOutput}" -y`);
+              await execAsync(`${this.quotedFFmpegPath} -loop 1 -i "${resolvedPath}" -t ${clip.duration} -filter_complex "[0:v]zoompan=z='min(zoom+0.001,1.2)':d=${clip.duration * 25}:s=1080x1920,fps=25[v]" -map "[v]" -c:v libx264 -pix_fmt yuv420p "${tempOutput}" -y`);
             } else {
-              await execAsync(`${this.ffmpegPath} -i "${resolvedPath}" -t ${clip.duration} -c:v libx264 -c:a aac "${tempOutput}" -y`);
+              await execAsync(`${this.quotedFFmpegPath} -i "${resolvedPath}" -t ${clip.duration} -c:v libx264 -c:a aac "${tempOutput}" -y`);
             }
             clipGenerated = true;
           } catch {
@@ -163,7 +215,7 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
           this.createSubtitleFile(clip.subtitle, clip.duration, subtitleFile);
 
           const subtitledOutput = path.join(this.tempDir, `clip_sub_${i}_${randomUUID()}.mp4`);
-          await execAsync(`${this.ffmpegPath} -i "${tempOutput}" -vf subtitles="${subtitleFile.replace(/\\/g, '/')}" -c:a copy "${subtitledOutput}" -y`);
+          await execAsync(`${this.quotedFFmpegPath} -i "${tempOutput}" -vf subtitles="${subtitleFile.replace(/\\/g, '/')}" -c:a copy "${subtitledOutput}" -y`);
 
           fs.unlinkSync(tempOutput);
           clipFiles.push(subtitledOutput);
@@ -178,7 +230,7 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
       fs.writeFileSync(concatFile, clipFiles.map(file => `file '${file.replace(/'/g, "'\\''")}'`).join('\n'));
 
       const concatenatedOutput = path.join(this.tempDir, `concatenated_${randomUUID()}.mp4`);
-      await execAsync(`${this.ffmpegPath} -f concat -safe 0 -i "${concatFile}" -c copy "${concatenatedOutput}" -y`);
+      await execAsync(`${this.quotedFFmpegPath} -f concat -safe 0 -i "${concatFile}" -c copy "${concatenatedOutput}" -y`);
 
       // 添加BGM和语音
       let finalOutput = outputPath;
@@ -197,7 +249,7 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
           audioFilters = '-map 1:a';
         }
 
-        await execAsync(`${this.ffmpegPath} -i "${concatenatedOutput}" ${audioInputs} -map 0:v ${audioFilters} -c:v copy -c:a aac "${finalOutput}" -y`);
+        await execAsync(`${this.quotedFFmpegPath} -i "${concatenatedOutput}" ${audioInputs} -map 0:v ${audioFilters} -c:v copy -c:a aac "${finalOutput}" -y`);
       } else {
         if (fs.existsSync(finalOutput)) fs.unlinkSync(finalOutput);
         fs.renameSync(concatenatedOutput, finalOutput);
@@ -278,6 +330,13 @@ ${text}
     fs.writeFileSync(filePath, srtContent, 'utf8');
   }
 
+  // 获取 ffprobe 路径
+  private get ffprobePath(): string {
+    const dir = path.dirname(this.ffmpegPath);
+    const base = path.basename(this.ffmpegPath);
+    return path.join(dir, base.replace('ffmpeg', 'ffprobe'));
+  }
+
   // 获取视频时长 — 纯 Node.js 解析，不依赖 grep
   private async getVideoDuration(
     filePath: string,
@@ -285,13 +344,13 @@ ${text}
   ): Promise<number> {
     try {
       const { stdout } = await execAsync(
-        `"${this.ffmpegPath.replace('ffmpeg', 'ffprobe')}" -v error -show_entries format=duration -of csv=p=0 "${filePath}"`
+        `"${this.ffprobePath}" -v error -show_entries format=duration -of csv=p=0 "${filePath}"`
       );
       const parsed = parseFloat(stdout.trim());
       if (!isNaN(parsed) && parsed > 0) return parsed;
     } catch {
       try {
-        const { stderr } = await execAsync(`"${this.ffmpegPath}" -i "${filePath}" -f null -`);
+        const { stderr } = await execAsync(`${this.quotedFFmpegPath} -i "${filePath}" -f null -`);
         const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
         if (match) {
           return parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);

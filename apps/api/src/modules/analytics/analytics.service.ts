@@ -1,7 +1,7 @@
 import prisma from '../../config/prisma';
 import { planStore, taskStore } from '../../memory-store';
 import { materialStore } from '../materials/material.service';
-import { GenerationTask } from '@shared/types';
+import type { GenerationTask } from '@shared/types';
 
 export interface AnalyticsOverview {
   totalProducts: number;
@@ -30,23 +30,18 @@ export class AnalyticsService {
     let failedTasks = 0;
     let runningTasks = 0;
     let pendingTasks = 0;
-    const recentTasks = [];
+    const recentTasks: AnalyticsOverview['recentTasks'] = [];
 
     try {
-      // 优先从数据库读取统计数据
       totalProducts = await prisma.product.count();
       totalMaterials = await prisma.material.count();
       totalCreativePlans = await prisma.creativePlan.count();
-      
-      const taskStats = await prisma.generationTask.aggregate({
-        _count: {
-          id: true,
-          status: true
-        },
-        _groupBy: ['status']
+
+      const taskStats = await prisma.generationTask.groupBy({
+        by: ['status'],
+        _count: { id: true },
       });
 
-      // 统计各状态任务数
       for (const stat of taskStats) {
         const count = stat._count.id;
         switch (stat.status) {
@@ -66,7 +61,6 @@ export class AnalyticsService {
         totalTasks += count;
       }
 
-      // 获取最近7天的任务统计
       for (let i = 6; i >= 0; i--) {
         const date = new Date();
         date.setDate(date.getDate() - i);
@@ -77,27 +71,23 @@ export class AnalyticsService {
           where: {
             createdAt: {
               gte: startOfDay,
-              lte: endOfDay
-            }
+              lte: endOfDay,
+            },
           },
-          select: { status: true }
+          select: { status: true },
         });
-
-        const count = dayTasks.length;
-        const success = dayTasks.filter(t => t.status === 'success').length;
-        const failed = dayTasks.filter(t => t.status === 'failed').length;
 
         recentTasks.push({
           date: startOfDay.toISOString().split('T')[0],
-          count,
-          success,
-          failed,
+          count: dayTasks.length,
+          success: dayTasks.filter(t => t.status === 'success').length,
+          failed: dayTasks.filter(t => t.status === 'failed').length,
         });
       }
     } catch (error) {
-      console.warn('[AnalyticsService] 数据库读取失败，fallback到内存统计:', error.message);
-      
-      // fallback到内存统计
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[AnalyticsService] 数据库读取失败，fallback到内存统计:', message);
+
       const tasks = Array.from(taskStore.values()) as GenerationTask[];
       totalTasks = tasks.length;
       successTasks = tasks.filter(t => t.status === 'success').length;
@@ -111,14 +101,11 @@ export class AnalyticsService {
         const dateStr = date.toISOString().split('T')[0];
 
         const dayTasks = tasks.filter(t => t.createdAt.startsWith(dateStr));
-        const success = dayTasks.filter(t => t.status === 'success').length;
-        const failed = dayTasks.filter(t => t.status === 'failed').length;
-
         recentTasks.push({
           date: dateStr,
           count: dayTasks.length,
-          success,
-          failed,
+          success: dayTasks.filter(t => t.status === 'success').length,
+          failed: dayTasks.filter(t => t.status === 'failed').length,
         });
       }
     }

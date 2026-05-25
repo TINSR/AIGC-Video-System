@@ -16,8 +16,8 @@ const outputDir = process.env.OUTPUT_DIR || './outputs';
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use('/outputs', express.static(path.join(__dirname, '../outputs')));
+app.use('/uploads', express.static(path.resolve(uploadDir)));
+app.use('/outputs', express.static(path.resolve(outputDir)));
 
 import productRoutes from './modules/products/product.routes';
 import creativePlanRoutes from './modules/creative-plans/creativePlan.routes';
