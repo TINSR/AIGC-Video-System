@@ -1,4 +1,4 @@
-import { DownloadOutlined } from "@ant-design/icons";
+import { DownloadOutlined, LinkOutlined } from "@ant-design/icons";
 import { Button, Empty, Space, Typography } from "antd";
 import { resolveAssetUrl } from "../services/api";
 
@@ -7,7 +7,8 @@ type Props = {
 };
 
 export function VideoPreviewPlayer({ videoUrl }: Props) {
-  const resolvedUrl = videoUrl ? resolveAssetUrl(videoUrl) : undefined;
+  const resolvedUrl = resolveAssetUrl(videoUrl);
+
   return (
     <div className="video-preview surface">
       {resolvedUrl ? (
@@ -15,13 +16,20 @@ export function VideoPreviewPlayer({ videoUrl }: Props) {
           <source src={resolvedUrl} type="video/mp4" />
         </video>
       ) : (
-        <Empty description="暂无成片，Mock 模式展示预览容器" />
+        <Empty description="暂无成片，任务成功后将在这里预览 mp4。" />
       )}
-      <Space className="video-actions">
-        <Typography.Text type="secondary">输出格式：mp4 · 720x1280 · 15s 内</Typography.Text>
-        <Button icon={<DownloadOutlined />} disabled={!resolvedUrl} href={resolvedUrl} download>
-          下载成片
-        </Button>
+      <Space className="video-actions" wrap>
+        <Typography.Text type="secondary">
+          {resolvedUrl ? `视频地址：${resolvedUrl}` : "输出格式：mp4 / 720x1280 / 约 15s"}
+        </Typography.Text>
+        <Space wrap>
+          <Button icon={<LinkOutlined />} disabled={!resolvedUrl} href={resolvedUrl} target="_blank">
+            打开视频
+          </Button>
+          <Button icon={<DownloadOutlined />} disabled={!resolvedUrl} href={resolvedUrl} download>
+            下载成片
+          </Button>
+        </Space>
       </Space>
     </div>
   );

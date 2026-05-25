@@ -1,4 +1,4 @@
-import { Alert, Button, Col, Row, Space, Typography, message } from "antd";
+import { Alert, Button, Col, Row, Space, Tag, Typography, message } from "antd";
 import { useMemo, useState } from "react";
 import type { CreativePlan, Material, Scene } from "@clipshop/shared";
 import { api } from "../services/api";
@@ -10,11 +10,12 @@ import { VisualBiblePanel } from "./VisualBiblePanel";
 
 type Props = {
   plan: CreativePlan;
+  productName: string;
   materials: Material[];
   onRender: (taskId: string) => void;
 };
 
-export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
+export function CreativePlanReviewPanel({ plan, productName, materials, onRender }: Props) {
   const [currentPlan, setCurrentPlan] = useState(plan);
   const [scenes, setScenes] = useState(plan.scenes);
   const [selectedSceneId, setSelectedSceneId] = useState(plan.scenes[0]?.id);
@@ -29,6 +30,7 @@ export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
   );
 
   const materialMap = new Map(materials.map((material) => [material.id, material]));
+  const isApproved = currentPlan.status === "approved";
 
   const saveScene = async (patch: Partial<Scene>) => {
     if (!selectedScene) return;
@@ -86,28 +88,29 @@ export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
         <div>
           <Typography.Text type="secondary">CreativePlan Review</Typography.Text>
           <Typography.Title level={2}>方案审核与分镜编辑</Typography.Title>
+          <Space wrap>
+            <Tag color="blue">商品：{productName}</Tag>
+            <Tag color={isApproved ? "green" : "gold"}>{currentPlan.status}</Tag>
+          </Space>
           <Typography.Paragraph>
-            先确认脚本、Visual Bible 和分镜，再审核通过。审核通过后才会创建视频生成任务。
+            生成视频前请确认脚本、Visual Bible、合规/连贯性提醒和每个分镜。审核通过后才会创建视频生成任务。
           </Typography.Paragraph>
         </div>
         <Space wrap>
-          <Button type="primary" size="large" loading={approving} onClick={approvePlan}>
-            审核通过
+          <Button type="primary" size="large" loading={approving} disabled={isApproved} onClick={approvePlan}>
+            {isApproved ? "已审核通过" : "审核通过"}
           </Button>
-          <Button
-            size="large"
-            loading={rendering}
-            disabled={currentPlan.status !== "approved"}
-            onClick={renderPlan}
-          >
+          <Button size="large" loading={rendering} disabled={!isApproved} onClick={renderPlan}>
             创建生成任务
           </Button>
         </Space>
       </section>
       {error ? <Alert type="error" showIcon message={error} /> : null}
-      {currentPlan.status !== "approved" ? (
-        <Alert type="info" showIcon message="审核通过前不会触发 render，可放心编辑分镜。" />
-      ) : null}
+      {!isApproved ? (
+        <Alert type="info" showIcon message="当前处于审核前状态：可以继续编辑分镜，系统不会提前触发 render。" />
+      ) : (
+        <Alert type="success" showIcon message="方案已审核通过，可以创建视频生成任务。" />
+      )}
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={12}>
           <ScriptResultPanel plan={currentPlan} />
