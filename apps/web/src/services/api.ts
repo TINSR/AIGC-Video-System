@@ -116,6 +116,20 @@ export const api = {
     await wait();
     return creativePlans.find((plan) => plan.id === planId) ?? creativePlans[0];
   },
+  async updateCreativePlan(planId: string, input: Partial<CreativePlan>): Promise<CreativePlan> {
+    if (!USE_MOCK) {
+      return request<CreativePlan>(`/creative-plans/${planId}`, {
+        method: "PUT",
+        body: JSON.stringify(input)
+      });
+    }
+    await wait();
+    const planIndex = creativePlans.findIndex((item) => item.id === planId);
+    const plan = planIndex >= 0 ? creativePlans[planIndex] : creativePlans[0];
+    const updated = { ...plan, ...input, id: planId };
+    creativePlans[planIndex >= 0 ? planIndex : 0] = updated;
+    return updated;
+  },
   async updateScene(planId: string, sceneId: string, input: Partial<Scene>): Promise<Scene> {
     if (!USE_MOCK) {
       return request<Scene>(`/creative-plans/${planId}/scenes/${sceneId}`, {
@@ -127,6 +141,25 @@ export const api = {
     const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
     const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
     const updated = { ...scene, ...input };
+    plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
+    return updated;
+  },
+  async regenerateScene(planId: string, sceneId: string): Promise<Scene> {
+    if (!USE_MOCK) {
+      return request<Scene>(`/creative-plans/${planId}/scenes/${sceneId}/regenerate`, {
+        method: "POST",
+        body: JSON.stringify({ modifyRequest: "Regenerate scene copy and Seedance prompt." })
+      });
+    }
+    await wait(500);
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
+    const updated = {
+      ...scene,
+      subtitle: `${scene.subtitle} / refreshed`,
+      voiceover: `${scene.voiceover} Refreshed with a tighter selling point.`,
+      seedancePrompt: `${scene.seedancePrompt}, refreshed ecommerce copy, clearer product focus`
+    };
     plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
     return updated;
   },

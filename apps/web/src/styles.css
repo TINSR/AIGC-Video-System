@@ -313,6 +313,93 @@ textarea {
   gap: 14px;
 }
 
+.scene-timeline {
+  display: grid;
+  gap: 16px;
+}
+
+.timeline-toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.timeline-toolbar h3 {
+  margin: 4px 0 0 !important;
+}
+
+.timeline-track {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(280px, 1fr));
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.timeline-scene {
+  display: grid;
+  gap: 12px;
+  min-width: 280px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(8, 9, 16, 0.58);
+}
+
+.timeline-scene-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-height: 34px;
+}
+
+.timeline-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.timeline-field,
+.timeline-form-grid label,
+.readonly-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.timeline-field span,
+.timeline-form-grid span,
+.readonly-field span {
+  color: #a7abc0;
+  font-size: 12px;
+}
+
+.timeline-field .ant-input,
+.timeline-field .ant-input-affix-wrapper,
+.timeline-field textarea,
+.timeline-form-grid .ant-input-number,
+.timeline-form-grid .ant-select {
+  width: 100%;
+}
+
+.readonly-field {
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.readonly-field .ant-typography {
+  margin-bottom: 0 !important;
+}
+
+.scene-warning-list {
+  display: grid;
+  gap: 8px;
+}
+
 .scene-card {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
@@ -425,6 +512,16 @@ textarea {
 
   .template-grid,
   .scene-card {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-toolbar,
+  .timeline-scene-header {
+    flex-direction: column;
+  }
+
+  .timeline-track,
+  .timeline-form-grid {
     grid-template-columns: 1fr;
   }
 }
