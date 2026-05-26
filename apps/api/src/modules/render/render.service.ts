@@ -138,37 +138,33 @@ export class RenderService {
     creativePlan: CreativePlan,
     materials: Material[]
   ): Promise<void> {
-    const maxRetries = 30;
-    let retries = 0;
+    const pollIntervalMs = Math.max(Number(process.env.SEEDANCE_POLL_INTERVAL_MS) || 5000, 1000);
+    const maxWaitMs = Math.max(Number(process.env.SEEDANCE_POLL_TIMEOUT_MS) || 15 * 60 * 1000, pollIntervalMs);
+    const startedAt = Date.now();
 
-    while (retries < maxRetries) {
+    while (Date.now() - startedAt < maxWaitMs) {
       const status = await this.seedanceProvider.getTaskStatus(seedanceTaskId);
 
       if (status.status === 'success') {
-        task.progress = 40;
-        task.currentStep = STEP_MAP[40];
-        task.logs.push(makeLog('info', 'Seedance 生成完成，开始生成字幕和准备配音'));
+        if (status.videoUrl) {
+          task.progress = 100;
+          task.status = 'success';
+          task.outputVideoUrl = status.videoUrl;
+          task.currentStep = STEP_MAP[100];
+          task.logs.push(makeLog('info', `Seedance 生成完成：${status.videoUrl}`));
+          task.updatedAt = new Date().toISOString();
+          taskStore.set(task.id, task);
+          return;
+        }
+
+        task.provider = 'ffmpeg_fallback';
+        task.progress = 30;
+        task.currentStep = 'Seedance 生成完成但未返回视频 URL，切换到 FFmpeg 兜底合成';
+        task.logs.push(makeLog('warn', 'Seedance 生成完成但未返回 videoUrl，切换到 FFmpeg 兜底'));
         task.updatedAt = new Date().toISOString();
         taskStore.set(task.id, task);
 
-        task.progress = 60;
-        task.currentStep = STEP_MAP[60];
-        task.logs.push(makeLog('info', '开始 FFmpeg 后处理'));
-        task.updatedAt = new Date().toISOString();
-        taskStore.set(task.id, task);
-
-        task.progress = 95;
-        task.currentStep = STEP_MAP[95];
-        task.updatedAt = new Date().toISOString();
-        taskStore.set(task.id, task);
-
-        task.progress = 100;
-        task.status = 'success';
-        task.outputVideoUrl = `/outputs/${task.id}.mp4`;
-        task.currentStep = STEP_MAP[100];
-        task.logs.push(makeLog('info', '视频生成完成'));
-        task.updatedAt = new Date().toISOString();
-        taskStore.set(task.id, task);
+        await this.renderWithFFmpeg(task, creativePlan, materials);
         return;
       } else if (status.status === 'failed') {
         task.provider = 'ffmpeg_fallback';
@@ -182,12 +178,11 @@ export class RenderService {
         return;
       }
 
-      task.progress = Math.max(task.progress, 25 + Math.floor((status.progress / 100) * 5));
+      task.progress = Math.max(task.progress, 25 + Math.floor((status.progress / 100) * 70));
       task.updatedAt = new Date().toISOString();
       taskStore.set(task.id, task);
 
-      retries++;
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
     }
 
     task.provider = 'ffmpeg_fallback';

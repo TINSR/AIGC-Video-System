@@ -82,7 +82,7 @@ export class CreativePlanService {
             }))
           }
         },
-        include: { scenes: true }
+        include: { scenes: { orderBy: { order: 'asc' } } }
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -149,7 +149,7 @@ export class CreativePlanService {
     try {
       const dbPlan = await prisma.creativePlan.findUnique({
         where: { id },
-        include: { scenes: true }
+        include: { scenes: { orderBy: { order: 'asc' } } }
       });
 
       if (dbPlan) {
@@ -166,7 +166,10 @@ export class CreativePlanService {
           complianceWarnings: (dbPlan.complianceWarnings as string[]) || [],
           continuityWarnings: (dbPlan.continuityWarnings as string[]) || [],
           createdAt: dbPlan.createdAt.toISOString(),
-          scenes: dbPlan.scenes.map(scene => ({
+          scenes: dbPlan.scenes
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map(scene => ({
             id: scene.id,
             creativePlanId: scene.creativePlanId,
             order: scene.order,
@@ -271,7 +274,7 @@ export class CreativePlanService {
           throw new Error(`${prefix}.warnings 必须是数组`);
         }
       }
-      existing.scenes = data.scenes;
+      existing.scenes = [...data.scenes].sort((a, b) => a.order - b.order);
     }
 
     // 尝试更新数据库
@@ -290,7 +293,7 @@ export class CreativePlanService {
       if (existing.scenes) {
         updateData.scenes = {
           deleteMany: {},
-          create: existing.scenes.map(scene => ({
+          create: [...existing.scenes].sort((a, b) => a.order - b.order).map(scene => ({
             id: scene.id,
             order: scene.order,
             duration: scene.duration,

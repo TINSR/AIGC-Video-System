@@ -302,7 +302,8 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
 
     // 转换CreativePlan为FFmpeg输入格式
     // 素材不存在时仍然生成 clip 对象 — compose 会走兜底
-    const clips = plan.scenes.map(scene => {
+    const orderedScenes = [...plan.scenes].sort((a, b) => a.order - b.order);
+    const clips = orderedScenes.map(scene => {
       const material = materials.find(m => m.id === scene.materialId) || materials[0];
       const fileUrl = material?.fileUrl ?? '';
       return {
