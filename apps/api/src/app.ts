@@ -16,20 +16,20 @@ const outputDir = process.env.OUTPUT_DIR || './outputs';
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-app.use('/uploads', express.static(path.resolve(uploadDir)));
-app.use('/outputs', express.static(path.resolve(outputDir)));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/outputs', express.static(path.join(__dirname, '../outputs')));
 
 import productRoutes from './modules/products/product.routes';
+// import materialRoutes from './modules/materials/material.routes';
 import creativePlanRoutes from './modules/creative-plans/creativePlan.routes';
-import renderRoutes from './modules/render/render.routes';
-import materialRoutes from './modules/materials/material.routes';
-import analyticsRoutes from './modules/analytics/analytics.routes';
+// import renderRoutes from './modules/render/render.routes';
+// import analyticsRoutes from './modules/analytics/analytics.routes';
 
 app.use('/api/products', productRoutes);
-app.use('/api', creativePlanRoutes);
-app.use('/api', renderRoutes);
-app.use('/api', materialRoutes);
-app.use('/api', analyticsRoutes);
+// app.use('/api/materials', materialRoutes);
+app.use('/api/creative-plans', creativePlanRoutes);
+// app.use('/api/tasks', renderRoutes);
+// app.use('/api/analytics', analyticsRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok', timestamp: new Date().toISOString() } });
