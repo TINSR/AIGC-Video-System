@@ -1,7 +1,7 @@
 import { Alert, Spin } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { CreativePlan, Material } from "@clipshop/shared";
+import type { CreativePlan, Material, Product } from "@clipshop/shared";
 import { CreativePlanReviewPanel } from "../components/CreativePlanReviewPanel";
 import { api } from "../services/api";
 
@@ -9,6 +9,7 @@ export function ReviewPage() {
   const { planId = "plan_001" } = useParams();
   const navigate = useNavigate();
   const [plan, setPlan] = useState<CreativePlan>();
+  const [product, setProduct] = useState<Product>();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -21,9 +22,13 @@ export function ReviewPage() {
     api
       .getCreativePlan(planId)
       .then(async (nextPlan) => {
-        const nextMaterials = await api.getMaterials(nextPlan.productId).catch(() => []);
+        const [nextMaterials, products] = await Promise.all([
+          api.getMaterials(nextPlan.productId).catch(() => []),
+          api.getProducts().catch(() => [])
+        ]);
         if (!alive) return;
         setPlan(nextPlan);
+        setProduct(products.find((item) => item.id === nextPlan.productId));
         setMaterials(nextMaterials);
       })
       .catch((err) => {
@@ -46,6 +51,7 @@ export function ReviewPage() {
   return (
     <CreativePlanReviewPanel
       plan={plan}
+      productName={product?.title ?? plan.productId}
       materials={materials}
       onRender={(taskId) => navigate(`/tasks/${taskId}`)}
     />

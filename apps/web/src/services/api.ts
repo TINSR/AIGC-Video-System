@@ -18,23 +18,22 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 
-// 解析静态资源 URL：/outputs 和 /uploads 需要指向 API 服务器 origin
-// mock 模式下返回相对路径（同源），真实 API 模式下拼接 API origin
-export function resolveAssetUrl(path: string): string {
-  if (!path) return path;
+export function resolveAssetUrl(path?: string): string | undefined {
+  if (!path) return undefined;
+  if (/^https?:\/\//i.test(path)) return path;
   if (USE_MOCK) return path;
-  // 从 API_BASE_URL 提取 origin，例如 http://localhost:3101/api -> http://localhost:3101
-  const apiOrigin = API_BASE_URL.replace(/\/api\/?$/, "");
-  if (path.startsWith("/outputs") || path.startsWith("/uploads")) {
-    return `${apiOrigin}${path}`;
+  if (!path.startsWith("/outputs") && !path.startsWith("/uploads")) return path;
+
+  try {
+    return `${new URL(API_BASE_URL, window.location.origin).origin}${path}`;
+  } catch {
+    return path;
   }
-  return path;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: isFormData ? undefined : { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     ...init
   });
   const payload = await response.json().catch(() => undefined);
@@ -70,33 +69,6 @@ export const api = {
     if (!USE_MOCK) return request<Material[]>(`/products/${productId}/materials`);
     await wait();
     return materials.filter((material) => material.productId === productId);
-  },
-  async uploadMaterial(productId: string, file: File): Promise<Material> {
-    if (!USE_MOCK) {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("title", file.name);
-      formData.append("tags", "上传素材");
-      return request<Material>(`/products/${productId}/materials`, {
-        method: "POST",
-        body: formData
-      });
-    }
-    await wait();
-    const material: Material = {
-      id: `material_${Date.now()}`,
-      productId,
-      type: file.type.startsWith("video/") ? "video" : "image",
-      fileUrl: URL.createObjectURL(file),
-      thumbnailUrl: file.type.startsWith("video/") ? undefined : URL.createObjectURL(file),
-      title: file.name,
-      tags: ["上传素材"],
-      aiDescription: "",
-      duration: file.type.startsWith("video/") ? 10 : undefined,
-      createdAt: new Date().toISOString()
-    };
-    materials.unshift(material);
-    return material;
   },
   async generateCreativePlan(
     productId: string,
