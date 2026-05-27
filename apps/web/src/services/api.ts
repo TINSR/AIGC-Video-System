@@ -51,6 +51,11 @@ export const api = {
     await wait();
     return products;
   },
+  async getProduct(productId: string): Promise<Product> {
+    if (!USE_MOCK) return request<Product>(`/products/${productId}`);
+    await wait();
+    return products.find((product) => product.id === productId) ?? products[0];
+  },
   async createProduct(input: Omit<Product, "id" | "createdAt">): Promise<Product> {
     if (!USE_MOCK) {
       return request<Product>("/products", {

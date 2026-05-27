@@ -18,10 +18,10 @@ export function MaterialsPage() {
     setLoading(true);
     setError(undefined);
 
-    Promise.all([api.getProducts(), api.getMaterials(productId)])
-      .then(([products, materials]) => {
+    Promise.all([api.getProduct(productId), api.getMaterials(productId).catch(() => [])])
+      .then(([nextProduct, materials]) => {
         if (!alive) return;
-        setProduct(products.find((item) => item.id === productId) ?? products[0]);
+        setProduct(nextProduct);
         setProductMaterials(materials);
       })
       .catch((err) => {
