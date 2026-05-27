@@ -128,9 +128,9 @@ export const api = {
     const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
     const updated = {
       ...scene,
-      subtitle: `${scene.subtitle} / refreshed`,
-      voiceover: `${scene.voiceover} Refreshed with a tighter selling point.`,
-      seedancePrompt: `${scene.seedancePrompt}, refreshed ecommerce copy, clearer product focus`
+      subtitle: `${scene.subtitle} / 已优化`,
+      voiceover: `${scene.voiceover} 现在突出一个更清晰的购买理由。`,
+      seedancePrompt: `${scene.seedancePrompt}, refreshed ecommerce short-video copy, clearer product focus`
     };
     plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
     return updated;
