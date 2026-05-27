@@ -1,14 +1,13 @@
 import { PlayCircleOutlined } from "@ant-design/icons";
 import { Space, Tag, Typography } from "antd";
 import type { Material } from "@clipshop/shared";
-import { resolveAssetUrl } from "../services/api";
 
 type MaterialCardProps = {
   material: Material;
 };
 
 export function MaterialCard({ material }: MaterialCardProps) {
-  const cover = resolveAssetUrl(material.thumbnailUrl ?? material.fileUrl);
+  const cover = material.thumbnailUrl ?? material.fileUrl;
 
   return (
     <article className="material-card">

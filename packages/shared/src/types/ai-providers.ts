@@ -48,7 +48,6 @@ export interface SeedanceRenderOutput {
   taskId: string;
   status: 'pending' | 'running' | 'success' | 'failed';
   progress: number;
-  videoUrl?: string;
   clips?: {
     sceneId: string;
     videoUrl: string;

@@ -64,6 +64,8 @@ export function TaskPage() {
 
   if (loading && !task) return <Spin fullscreen />;
 
+  const resolvedOutputUrl = resolveAssetUrl(task?.outputVideoUrl);
+
   return (
     <Space direction="vertical" size={20} className="full-width">
       <section className="section-heading">
@@ -97,9 +99,9 @@ export function TaskPage() {
               <Descriptions.Item label="currentStep">{task.currentStep}</Descriptions.Item>
               <Descriptions.Item label="provider">{task.provider}</Descriptions.Item>
               <Descriptions.Item label="outputVideoUrl">
-                {task.outputVideoUrl ? (
-                  <a href={resolveAssetUrl(task.outputVideoUrl)} target="_blank" rel="noreferrer">
-                    {task.outputVideoUrl}
+                {resolvedOutputUrl ? (
+                  <a href={resolvedOutputUrl} target="_blank" rel="noreferrer">
+                    {resolvedOutputUrl}
                   </a>
                 ) : (
                   "暂无"

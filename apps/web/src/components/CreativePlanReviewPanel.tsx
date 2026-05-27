@@ -1,4 +1,4 @@
-import { Alert, Button, Col, Row, Space, Typography, message } from "antd";
+import { Alert, Button, Col, Row, Space, Tag, Typography, message } from "antd";
 import { useState } from "react";
 import type { CreativePlan, Material, Scene } from "@clipshop/shared";
 import { api } from "../services/api";
@@ -9,6 +9,7 @@ import { VisualBiblePanel } from "./VisualBiblePanel";
 
 type Props = {
   plan: CreativePlan;
+  productName: string;
   materials: Material[];
   onRender: (taskId: string) => void;
 };
@@ -17,7 +18,7 @@ type EditableScenePatch = Partial<
   Pick<Scene, "duration" | "transition" | "subtitle" | "voiceover" | "seedancePrompt">
 >;
 
-export function CreativePlanReviewPanel({ plan, onRender }: Props) {
+export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) {
   const [currentPlan, setCurrentPlan] = useState(plan);
   const [scenes, setScenes] = useState(() => [...plan.scenes].sort((a, b) => a.order - b.order));
   const [dirty, setDirty] = useState(false);
@@ -26,6 +27,8 @@ export function CreativePlanReviewPanel({ plan, onRender }: Props) {
   const [approving, setApproving] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState<string>();
+
+  const isApproved = currentPlan.status === "approved";
 
   const normalizeScenes = (nextScenes: Scene[]) =>
     nextScenes.map((scene, index) => ({
@@ -133,29 +136,36 @@ export function CreativePlanReviewPanel({ plan, onRender }: Props) {
         <div>
           <Typography.Text type="secondary">CreativePlan Review</Typography.Text>
           <Typography.Title level={2}>方案审核与分镜剪辑</Typography.Title>
+          <Space wrap>
+            <Tag color="blue">商品：{productName}</Tag>
+            <Tag color={isApproved ? "green" : "gold"}>{currentPlan.status}</Tag>
+          </Space>
           <Typography.Paragraph>
             先调整分镜顺序、时长、转场、字幕、旁白和 Seedance Prompt，再保存剪辑并进入生成。
           </Typography.Paragraph>
         </div>
         <Space wrap>
-          <Button type="primary" size="large" loading={approving || savingTimeline} onClick={approvePlan}>
-            审核通过
-          </Button>
           <Button
+            type="primary"
             size="large"
-            loading={rendering || savingTimeline}
-            disabled={currentPlan.status !== "approved"}
-            onClick={renderPlan}
+            loading={approving || savingTimeline}
+            disabled={isApproved}
+            onClick={approvePlan}
           >
+            {isApproved ? "已审核通过" : "审核通过"}
+          </Button>
+          <Button size="large" loading={rendering || savingTimeline} disabled={!isApproved} onClick={renderPlan}>
             创建生成任务
           </Button>
         </Space>
       </section>
 
       {error ? <Alert type="error" showIcon message={error} /> : null}
-      {currentPlan.status !== "approved" ? (
+      {!isApproved ? (
         <Alert type="info" showIcon message="审核通过前不会触发 render，可以先放心编辑并保存分镜。" />
-      ) : null}
+      ) : (
+        <Alert type="success" showIcon message="方案已审核通过，可以创建视频生成任务。" />
+      )}
       {dirty ? <Alert type="warning" showIcon message="当前有未保存剪辑；点击审核或 render 时会先自动保存。" /> : null}
 
       <Row gutter={[20, 20]}>
