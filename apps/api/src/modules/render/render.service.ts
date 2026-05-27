@@ -85,13 +85,14 @@ export class RenderService {
       task.status = 'running';
       task.progress = 10;
       task.currentStep = STEP_MAP[10];
-      task.logs.push(makeLog('info', '开始读取 CreativePlan 和素材'));
+      task.logs.push(makeLog('info', `读取 CreativePlan (${creativePlan.id})，共 ${creativePlan.scenes.length} 个分镜，${materials.length} 个素材`));
       task.updatedAt = new Date().toISOString();
       taskStore.set(task.id, task);
 
       task.progress = 25;
       task.currentStep = STEP_MAP[25];
-      task.logs.push(makeLog('info', '开始调用 Seedance API'));
+      const hasKey = !!process.env.SEEDANCE_API_KEY;
+      task.logs.push(makeLog('info', `构建 Seedance prompt（API Key ${hasKey ? '已配置' : '未配置'}）`));
       task.updatedAt = new Date().toISOString();
       taskStore.set(task.id, task);
 
@@ -116,7 +117,7 @@ export class RenderService {
       } else {
         task.progress = 25;
         task.currentStep = STEP_MAP[25];
-        task.logs.push(makeLog('info', `Seedance 任务提交成功，任务ID：${seedanceResult.taskId}`));
+        task.logs.push(makeLog('info', `Seedance 任务已提交，ID：${seedanceResult.taskId}，开始轮询状态`));
         task.updatedAt = new Date().toISOString();
         taskStore.set(task.id, task);
 
@@ -215,7 +216,7 @@ export class RenderService {
 
       task.progress = 40;
       task.currentStep = STEP_MAP[40];
-      task.logs.push(makeLog('info', `开始 FFmpeg 视频合成 (FFmpeg 版本: ${ffmpegCheck.version})`));
+      task.logs.push(makeLog('info', `FFmpeg 可用（版本: ${ffmpegCheck.version}），开始合成 ${creativePlan.scenes.length} 个分镜`));
       task.updatedAt = new Date().toISOString();
       taskStore.set(task.id, task);
 
@@ -236,7 +237,7 @@ export class RenderService {
         task.status = 'success';
         task.outputVideoUrl = `/outputs/${task.id}.mp4`;
         task.currentStep = STEP_MAP[100];
-        task.logs.push(makeLog('info', 'FFmpeg 合成完成'));
+        task.logs.push(makeLog('info', `FFmpeg 合成完成，输出：/outputs/${task.id}.mp4`));
       } else {
         task.status = 'failed';
         task.errorMessage = result.errorMessage || 'FFmpeg 合成失败';

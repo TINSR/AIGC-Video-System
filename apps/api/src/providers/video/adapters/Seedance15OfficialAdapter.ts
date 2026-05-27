@@ -126,26 +126,52 @@ export class Seedance15OfficialAdapter {
 
   private buildPrompt(input: SeedanceRenderInput): string {
     const sortedScenes = [...input.scenes].sort((a, b) => a.order - b.order);
+    const vb = input.visualBible;
+
+    // 产品信息段
+    const productSection = [
+      '【产品信息】',
+      `商品外观：${vb.productAppearance}`,
+      `核心卖点：${vb.mainScenes.join('、')}`,
+    ].join('\n');
+
+    // 全局视觉设定段
+    const visualSection = [
+      '【全局视觉设定】',
+      `风格：${vb.style}`,
+      `色调：${vb.colorTone}`,
+      `光线：${vb.lighting}`,
+      `镜头风格：${vb.cameraStyle}`,
+      `连贯性规则：${vb.continuityRules.join('；')}`,
+    ].join('\n');
+
+    // 分镜脚本段
     const scenePrompts = sortedScenes
-      .map(scene => [
-        `Scene ${scene.order}:`,
-        scene.visualDescription,
-        scene.seedancePrompt,
-        scene.subtitle ? `Subtitle: ${scene.subtitle}` : '',
-        scene.voiceover ? `Voiceover: ${scene.voiceover}` : '',
-      ].filter(Boolean).join(' '))
+      .map(scene => {
+        const parts = [
+          `分镜${scene.order}（${scene.duration}秒）：`,
+          scene.visualDescription,
+          scene.seedancePrompt,
+        ];
+        if (scene.subtitle) parts.push(`字幕：${scene.subtitle}`);
+        if (scene.transition && scene.order < sortedScenes.length) parts.push(`转场：${scene.transition}`);
+        return parts.join(' ');
+      })
       .join('\n');
 
-    return [
-      'Generate a polished vertical e-commerce product video.',
-      `Style: ${input.visualBible.style}`,
-      `Color tone: ${input.visualBible.colorTone}`,
-      `Camera style: ${input.visualBible.cameraStyle}`,
-      `Product appearance: ${input.visualBible.productAppearance}`,
-      `Continuity rules: ${input.visualBible.continuityRules.join('; ')}`,
-      scenePrompts,
-      'Final video must be coherent, advertising-oriented, and no longer than 15 seconds.',
+    const sceneSection = `【分镜脚本】\n${scenePrompts}`;
+
+    // 要求段
+    const requirements = [
+      '【要求】',
+      '- 竖屏 9:16，电商带货短视频',
+      '- 商品始终清晰可见，不要出现与商品外观冲突的元素',
+      '- 字幕简洁有力，节奏适合 15 秒短视频',
+      '- 画面明亮、真实、有购买吸引力',
+      '- 总时长不超过 15 秒',
     ].join('\n');
+
+    return [productSection, visualSection, sceneSection, requirements].join('\n\n');
   }
 
   private clampDuration(duration: number): number {
