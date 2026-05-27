@@ -32,8 +32,9 @@ export function resolveAssetUrl(path?: string): string | undefined {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: isFormData ? undefined : { "Content-Type": "application/json" },
     ...init
   });
   const payload = await response.json().catch(() => undefined);
@@ -69,6 +70,33 @@ export const api = {
     if (!USE_MOCK) return request<Material[]>(`/products/${productId}/materials`);
     await wait();
     return materials.filter((material) => material.productId === productId);
+  },
+  async uploadMaterial(productId: string, file: File): Promise<Material> {
+    if (!USE_MOCK) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("title", file.name);
+      formData.append("tags", "上传素材");
+      return request<Material>(`/products/${productId}/materials`, {
+        method: "POST",
+        body: formData
+      });
+    }
+    await wait();
+    const material: Material = {
+      id: `material_${Date.now()}`,
+      productId,
+      type: file.type.startsWith("video/") ? "video" : "image",
+      fileUrl: URL.createObjectURL(file),
+      thumbnailUrl: file.type.startsWith("video/") ? undefined : URL.createObjectURL(file),
+      title: file.name,
+      tags: ["上传素材"],
+      aiDescription: "",
+      duration: file.type.startsWith("video/") ? 10 : undefined,
+      createdAt: new Date().toISOString()
+    };
+    materials.unshift(material);
+    return material;
   },
   async generateCreativePlan(
     productId: string,
