@@ -28,6 +28,8 @@ export type ScriptStyle =
   | 'discount'
   | 'premium';
 
+export type SceneGoal = 'full_demo' | 'hook' | 'feature' | 'proof' | 'cta';
+
 export type Scene = {
   id: string;
   creativePlanId: string;
@@ -40,6 +42,7 @@ export type Scene = {
   seedancePrompt: string;
   warnings: string[];
   transition: 'cut' | 'fade' | 'zoom';
+  goal?: SceneGoal;
 };
 
 export type VisualBible = {
@@ -67,6 +70,15 @@ export type CreativePlan = {
   complianceWarnings: string[];
   continuityWarnings: string[];
   createdAt: string;
+  agentTrace?: AgentTrace[];
+};
+
+export type AgentTrace = {
+  agent: string;
+  status: 'success' | 'warning' | 'failed';
+  summary: string;
+  durationMs?: number;
+  warnings?: string[];
 };
 
 export type TaskStatus = 'pending' | 'running' | 'success' | 'failed';

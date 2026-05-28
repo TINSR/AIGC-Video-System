@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
+import { CreativePlanPipeline } from './CreativePlanPipeline';
 import { ComplianceAgent } from '../../agents/ComplianceAgent';
 import { ContinuityAgent } from '../../agents/ContinuityAgent';
 import { planStore } from '../../memory-store';
@@ -12,21 +13,30 @@ const VALID_ASPECT_RATIOS = new Set(['9:16', '16:9']);
 
 export class CreativePlanService {
   private mockAiProvider: MockAiProvider;
+  private pipeline: CreativePlanPipeline;
   private complianceAgent: ComplianceAgent;
   private continuityAgent: ContinuityAgent;
 
   constructor() {
     this.mockAiProvider = new MockAiProvider();
+    this.pipeline = new CreativePlanPipeline();
     this.complianceAgent = new ComplianceAgent();
     this.continuityAgent = new ContinuityAgent();
   }
 
-  // 生成创意方案
+  // 生成创意方案 — 多 Agent Pipeline，MockAiProvider 作为 fallback
   async generateCreativePlan(input: CreativePlanInput): Promise<CreativePlan> {
     const { product, materials } = input;
 
-    // 1. 调用MockAiProvider生成创意方案草稿
-    const planDraft = await this.mockAiProvider.generateCreativePlan(input);
+    // 1. 尝试多 Agent Pipeline
+    let planDraft: CreativePlanDraft & { agentTrace?: any[] };
+    try {
+      planDraft = await this.pipeline.generate(input);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] Pipeline 失败，fallback 到 MockAiProvider:', message);
+      planDraft = await this.mockAiProvider.generateCreativePlan(input);
+    }
 
     // 2. 调用ComplianceAgent检查合规性
     const { complianceWarnings } = await this.complianceAgent.check(planDraft);
