@@ -101,25 +101,6 @@ model GenerationTask {
   logs           TaskLog[]
 }
 
-// 预留CreativeStrategy模型，Day5暂不启用
-// model CreativeStrategy {
-//   id                   String   @id @default(cuid())
-//   productId            String
-//   status               String
-//   videoGoal            String
-//   targetAudience       String
-//   sellingPointOrder    Json
-//   emotionalArc         String
-//   styleDirection       String
-//   recommendedSceneCount Int
-//   warnings             Json
-//   agentTrace           Json?
-//   createdAt            DateTime @default(now())
-//   updatedAt            DateTime @updatedAt
-//   product              Product  @relation(fields: [productId], references: [id])
-//   creativePlans        CreativePlan[]
-// }
-
 model TaskLog {
   id        String   @id @default(cuid())
   taskId    String
