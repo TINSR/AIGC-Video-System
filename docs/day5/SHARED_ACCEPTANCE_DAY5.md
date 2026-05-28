@@ -1,6 +1,6 @@
 # Day 5 共享验收清单
 
-> 基线：`origin/codex/integrate-ai-video`  
+> 基线：`origin/codex/integrate-ai-video`
 > HEAD：`d19fda3 fix: stabilize day5 baseline integration`
 
 ---
@@ -121,4 +121,3 @@ GET /api/tasks/:id
 - generate/approve/render 任何一环断掉。
 - scenes 保存后丢失或 render 不读取。
 - 密钥泄露。
-

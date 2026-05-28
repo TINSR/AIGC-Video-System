@@ -1,8 +1,8 @@
 # Agent B Day 5 任务书：最终契约预留与后端安全增量
 
-> 角色：后端 Agent  
-> 建议分支：`feature/day5-contract-and-persistence`  
-> 基线：`origin/codex/integrate-ai-video`，HEAD `d19fda3`  
+> 角色：后端 Agent
+> 建议分支：`feature/day5-contract-and-persistence`
+> 基线：`origin/codex/integrate-ai-video`，HEAD `d19fda3`
 > 目标：预留最终版本需要的类型、字段和 API 设计，同时绝不破坏现有主链路。
 
 ---
@@ -161,4 +161,3 @@ Task.renderMode?: "full_video" | "scene_clips";
 - [ ] 新字段尽量为 optional，不破坏前端。
 - [ ] 没有提交密钥。
 - [ ] 如果改 Prisma，必须 `db:generate` 通过。
-

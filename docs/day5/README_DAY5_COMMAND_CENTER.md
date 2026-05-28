@@ -1,8 +1,8 @@
 # Day 5 总控文档：双审核流程与多 Agent 契约定型
 
-> 当前共同基线：`origin/codex/integrate-ai-video`  
-> 基线 HEAD：`d19fda3 fix: stabilize day5 baseline integration`  
-> 备份分支：`origin/codex/day5-baseline`  
+> 当前共同基线：`origin/codex/integrate-ai-video`
+> 基线 HEAD：`d19fda3 fix: stabilize day5 baseline integration`
+> 备份分支：`origin/codex/day5-baseline`
 > Day 5 目标：在不破坏 Day4 分镜剪辑台和 Seedance/FFmpeg 双链路的前提下，定型最终版本的双审核、多 Agent、预留字段/API 方案，并完成最小可运行改造。
 
 ---
@@ -209,4 +209,3 @@ GET /api/tasks/:id
 - render 不读取保存后的 scenes。
 - Seedance/fallback 双链路被破坏。
 - 真实密钥泄露。
-

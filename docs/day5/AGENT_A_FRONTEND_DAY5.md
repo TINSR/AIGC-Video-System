@@ -1,8 +1,8 @@
 # Agent A Day 5 任务书：双审核与前端契约适配
 
-> 角色：前端 Agent  
-> 建议分支：`feature/day5-frontend-review-flow`  
-> 基线：`origin/codex/integrate-ai-video`，HEAD `d19fda3`  
+> 角色：前端 Agent
+> 建议分支：`feature/day5-frontend-review-flow`
+> 基线：`origin/codex/integrate-ai-video`，HEAD `d19fda3`
 > 目标：在不破坏现有分镜剪辑台的前提下，为最终版本的“双审核流程”和多 Agent 输出做前端适配。
 
 ---
@@ -136,4 +136,3 @@ Seedance Prompt 生成中
 - [ ] 预留策略审核展示位置。
 - [ ] 可展示 `scene.goal`，如果后端返回。
 - [ ] task/video 页面不被破坏。
-

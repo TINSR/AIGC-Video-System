@@ -1,8 +1,8 @@
 # Agent C Day 5 任务书：多 Agent CreativePlan Pipeline
 
-> 角色：AI/CreativePlan Agent  
-> 建议分支：`feature/day5-multi-agent-pipeline`  
-> 基线：`origin/codex/integrate-ai-video`，HEAD `d19fda3`  
+> 角色：AI/CreativePlan Agent
+> 建议分支：`feature/day5-multi-agent-pipeline`
+> 基线：`origin/codex/integrate-ai-video`，HEAD `d19fda3`
 > 目标：把 CreativePlan 生成从“一次性生成”升级为可解释的多 Agent Pipeline，但保持现有 API 和前端契约稳定。
 
 ---
@@ -186,4 +186,3 @@ totalDuration <= 15
 - [ ] Compliance/Continuity 仍运行。
 - [ ] approve/render 不坏。
 - [ ] Seedance/fallback 不坏。
-
