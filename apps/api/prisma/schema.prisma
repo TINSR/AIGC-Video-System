@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id             String     @id @default(cuid())
+  title          String
+  category       String
+  sellingPoints  String
+  targetAudience String
+  usageScene     String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  materials      Material[]
+  creativePlans  CreativePlan[]
+  tasks          GenerationTask[]
+}
+
+model Material {
+  id            String   @id @default(cuid())
+  productId     String
+  type          String
+  fileUrl       String
+  thumbnailUrl  String?
+  title         String
+  tags          String
+  aiDescription String?
+  duration      Float?
+  createdAt     DateTime @default(now())
+  product       Product  @relation(fields: [productId], references: [id])
+}
+
+model CreativePlan {
+  id                  String   @id @default(cuid())
+  productId           String
+  status              String
+  style               String
+  title               String
+  hook                String
+  adCopy              String   @db.Text
+  cta                 String
+  visualBible         Json
+  complianceWarnings  Json?
+  continuityWarnings  Json?
+  promptTrace         Json?
+  stage               String?
+  renderMode          String?
+  agentTrace          Json?
+  strategyId          String?
+  version             Int?
+  parentPlanId        String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  product             Product  @relation(fields: [productId], references: [id])
+  tasks               GenerationTask[]
+  scenes              Scene[]
+}
+
+model Scene {
+  id                String @id @default(cuid())
+  creativePlanId    String
+  order             Int
+  duration          Float
+  visualDescription String
+  subtitle          String
+  voiceover         String
+  materialId        String?
+  seedancePrompt    String @db.Text
+  warnings          Json?
+  transition        String
+  goal              String?
+  materialUsage     String?
+  negativePrompt    String?
+  previewVideoUrl   String?
+  renderStatus      String?
+  creativePlan      CreativePlan @relation(fields: [creativePlanId], references: [id])
+}
+
+model GenerationTask {
+  id             String    @id @default(cuid())
+  productId      String
+  creativePlanId String
+  status         String
+  progress       Int       @default(0)
+  currentStep    String
+  provider       String    @default("seedance_1_5")
+  outputVideoUrl String?
+  errorMessage   String?
+  type           String?
+  resultId       String?
+  renderMode     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  product        Product   @relation(fields: [productId], references: [id])
+  creativePlan   CreativePlan @relation(fields: [creativePlanId], references: [id])
+  logs           TaskLog[]
+}
+
+// 预留CreativeStrategy模型，Day5暂不启用
+// model CreativeStrategy {
+//   id                   String   @id @default(cuid())
+//   productId            String
+//   status               String
+//   videoGoal            String
+//   targetAudience       String
+//   sellingPointOrder    Json
+//   emotionalArc         String
+//   styleDirection       String
+//   recommendedSceneCount Int
+//   warnings             Json
+//   agentTrace           Json?
+//   createdAt            DateTime @default(now())
+//   updatedAt            DateTime @updatedAt
+//   product              Product  @relation(fields: [productId], references: [id])
+//   creativePlans        CreativePlan[]
+// }
+
+model TaskLog {
+  id        String   @id @default(cuid())
+  taskId    String
+  level     String
+  message   String
+  timestamp DateTime @default(now())
+  task      GenerationTask @relation(fields: [taskId], references: [id])
+}
