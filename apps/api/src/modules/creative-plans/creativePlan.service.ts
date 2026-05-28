@@ -1,4 +1,14 @@
+import { randomUUID } from 'crypto';
+import { MockAiProvider } from '../../providers/ai/MockAiProvider';
+import { ComplianceAgent } from '../../agents/ComplianceAgent';
+import { ContinuityAgent } from '../../agents/ContinuityAgent';
+import { planStore } from '../../memory-store';
 import prisma from '../../config/prisma';
+import type { CreativePlanInput, CreativePlanDraft } from '@shared/types/ai-providers';
+import type { CreativePlan, Scene, Material, Product } from '@shared/types';
+
+const VALID_TRANSITIONS = new Set(['cut', 'fade', 'zoom']);
+const VALID_ASPECT_RATIOS = new Set(['9:16', '16:9']);
 
 interface SceneUpdateData {
   id: string;
@@ -14,148 +24,488 @@ interface SceneUpdateData {
   renderStatus?: string;
 }
 
-export const getCreativePlanById = async (id: string) => {
-  const plan = await prisma.creativePlan.findUnique({
-    where: { id },
-    include: {
-      scenes: {
-        orderBy: { order: 'asc' }
+export class CreativePlanService {
+  private mockAiProvider: MockAiProvider;
+  private complianceAgent: ComplianceAgent;
+  private continuityAgent: ContinuityAgent;
+
+  constructor() {
+    this.mockAiProvider = new MockAiProvider();
+    this.complianceAgent = new ComplianceAgent();
+    this.continuityAgent = new ContinuityAgent();
+  }
+
+  // 生成创意方案
+  async generateCreativePlan(input: CreativePlanInput): Promise<CreativePlan> {
+    const { product, materials } = input;
+
+    // 1. 调用MockAiProvider生成创意方案草稿
+    const planDraft = await this.mockAiProvider.generateCreativePlan(input);
+
+    // 2. 调用ComplianceAgent检查合规性
+    const { complianceWarnings } = await this.complianceAgent.check(planDraft);
+
+    // 3. 调用ContinuityAgent检查连贯性
+    const { continuityWarnings } = await this.continuityAgent.check(planDraft, materials);
+
+    // 4. 组装完整的CreativePlan：补齐 id、status、createdAt、scene.id、scene.creativePlanId
+    const planId = randomUUID();
+    const now = new Date().toISOString();
+
+    const creativePlan: CreativePlan = {
+      id: planId,
+      ...planDraft,
+      complianceWarnings: complianceWarnings.map(w => w.message),
+      continuityWarnings: continuityWarnings.map(w => w.message),
+      status: 'draft',
+      createdAt: now,
+      scenes: planDraft.scenes.map((scene) => ({
+        ...scene,
+        id: randomUUID(),
+        creativePlanId: planId,
+      })),
+    };
+
+    // 尝试写入MySQL，失败则fallback到内存
+    try {
+      await prisma.creativePlan.create({
+        data: {
+          id: creativePlan.id,
+          productId: creativePlan.productId,
+          status: creativePlan.status,
+          style: creativePlan.style,
+          title: creativePlan.title,
+          hook: creativePlan.hook,
+          adCopy: creativePlan.adCopy,
+          cta: creativePlan.cta,
+          visualBible: creativePlan.visualBible,
+          complianceWarnings: creativePlan.complianceWarnings,
+          continuityWarnings: creativePlan.continuityWarnings,
+          scenes: {
+            create: creativePlan.scenes.map(scene => ({
+              id: scene.id,
+              order: scene.order,
+              duration: scene.duration,
+              visualDescription: scene.visualDescription,
+              subtitle: scene.subtitle,
+              voiceover: scene.voiceover,
+              materialId: scene.materialId ?? null,
+              seedancePrompt: scene.seedancePrompt,
+              warnings: scene.warnings,
+              transition: scene.transition,
+              goal: scene.goal ?? null,
+              materialUsage: scene.materialUsage ?? null,
+              negativePrompt: scene.negativePrompt ?? null,
+              previewVideoUrl: scene.previewVideoUrl ?? null,
+              renderStatus: scene.renderStatus ?? null,
+            }))
+          }
+        },
+        include: { scenes: { orderBy: { order: 'asc' } } }
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库写入失败，fallback到内存存储:', message);
+    }
+
+    // 始终写入内存，保证读取一致
+    planStore.set(planId, creativePlan);
+
+    return creativePlan;
+  }
+
+  // 重新生成分镜
+  async regenerateScene(input: {
+    creativePlan: CreativePlan;
+    sceneId: string;
+    materials: Material[];
+    modifyRequest?: string;
+  }): Promise<Scene> {
+    const { creativePlan, sceneId, materials, modifyRequest } = input;
+
+    const existingScene = creativePlan.scenes.find(s => s.id === sceneId);
+    if (!existingScene) {
+      throw new Error('分镜不存在');
+    }
+
+    const product = this.buildProductStub(creativePlan.productId);
+
+    const sceneDraft = await this.mockAiProvider.regenerateScene({
+      product,
+      materials,
+      existingScene,
+      creativePlan,
+      modifyRequest,
+    });
+
+    const tempPlan: CreativePlanDraft = {
+      productId: creativePlan.productId,
+      style: creativePlan.style,
+      title: creativePlan.title,
+      hook: creativePlan.hook,
+      adCopy: creativePlan.adCopy,
+      cta: creativePlan.cta,
+      visualBible: creativePlan.visualBible,
+      scenes: [sceneDraft],
+      complianceWarnings: [],
+      continuityWarnings: [],
+    };
+
+    const { complianceWarnings } = await this.complianceAgent.check(tempPlan);
+    const { continuityWarnings } = await this.continuityAgent.check(tempPlan, materials);
+
+    return {
+      ...sceneDraft,
+      id: sceneId, // 保留原 sceneId，前端后续操作不失效
+      creativePlanId: creativePlan.id,
+      warnings: [...complianceWarnings.map(w => w.message), ...continuityWarnings.map(w => w.message)],
+    };
+  }
+
+  // 获取创意方案详情
+  async getCreativePlan(id: string): Promise<CreativePlan | null> {
+    // 优先从数据库读取
+    try {
+      const dbPlan = await prisma.creativePlan.findUnique({
+        where: { id },
+        include: { scenes: { orderBy: { order: 'asc' } } }
+      });
+
+      if (dbPlan) {
+        const plan: CreativePlan = {
+          id: dbPlan.id,
+          productId: dbPlan.productId,
+          status: dbPlan.status as any,
+          style: dbPlan.style as any,
+          title: dbPlan.title,
+          hook: dbPlan.hook,
+          adCopy: dbPlan.adCopy,
+          cta: dbPlan.cta,
+          visualBible: dbPlan.visualBible as any,
+          complianceWarnings: (dbPlan.complianceWarnings as string[]) || [],
+          continuityWarnings: (dbPlan.continuityWarnings as string[]) || [],
+          createdAt: dbPlan.createdAt.toISOString(),
+          scenes: dbPlan.scenes
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map(scene => ({
+            id: scene.id,
+            creativePlanId: scene.creativePlanId,
+            order: scene.order,
+            duration: scene.duration,
+            visualDescription: scene.visualDescription,
+            subtitle: scene.subtitle,
+            voiceover: scene.voiceover,
+            materialId: scene.materialId ?? undefined,
+            seedancePrompt: scene.seedancePrompt,
+            warnings: (scene.warnings as string[]) || [],
+            transition: scene.transition as any,
+          }))
+        };
+
+        // 同步到内存，保证后续操作一致
+        planStore.set(id, plan);
+        return plan;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库读取失败，fallback到内存存储:', message);
+    }
+
+    // fallback到内存
+    return planStore.get(id) ?? null;
+  }
+
+  // 更新创意方案 — 支持字段级更新，含浅层合同校验
+  async updateCreativePlan(id: string, data: Partial<CreativePlan>): Promise<CreativePlan | null> {
+    const existing = planStore.get(id);
+    if (!existing) return null;
+
+    const allowedScalarFields: (keyof CreativePlan)[] = [
+      'title', 'hook', 'adCopy', 'cta',
+      'complianceWarnings', 'continuityWarnings',
+    ];
+
+    for (const key of allowedScalarFields) {
+      if (key in data) {
+        (existing as Record<string, unknown>)[key] = data[key];
       }
     }
-  });
 
-  if (!plan) return null;
-
-  return plan;
-};
-
-export const batchUpdateScenes = async (planId: string, scenes: SceneUpdateData[]) => {
-  const existingScenes = await prisma.scene.findMany({
-    where: { creativePlanId: planId },
-    select: { id: true }
-  });
-  const existingSceneIds = new Set(existingScenes.map(s => s.id));
-  
-  for (const scene of scenes) {
-    if (!existingSceneIds.has(scene.id)) {
-      throw new Error(`Scene ${scene.id} does not belong to plan ${planId}`);
-    }
-  }
-
-  let totalDuration = 0;
-  for (const scene of scenes) {
-    if (scene.duration < 1 || scene.duration > 15) {
-      throw new Error(`Scene ${scene.id} duration must be between 1 and 15 seconds`);
-    }
-    if (!scene.transition || scene.transition.trim() === '') {
-      throw new Error(`Scene ${scene.id} transition cannot be empty`);
-    }
-    if (typeof scene.subtitle !== 'string') {
-      throw new Error(`Scene ${scene.id} subtitle must be a string`);
-    }
-    if (typeof scene.voiceover !== 'string') {
-      throw new Error(`Scene ${scene.id} voiceover must be a string`);
-    }
-    if (!scene.seedancePrompt || scene.seedancePrompt.trim() === '') {
-      throw new Error(`Scene ${scene.id} seedancePrompt cannot be empty`);
-    }
-    totalDuration += scene.duration;
-  }
-
-  if (totalDuration > 15) {
-    console.warn(`Total duration ${totalDuration} exceeds 15 seconds limit`);
-  }
-
-  const transaction = scenes.map((scene, index) => 
-    prisma.scene.update({
-      where: { id: scene.id },
-      data: {
-        duration: scene.duration,
-        transition: scene.transition,
-        subtitle: scene.subtitle,
-        voiceover: scene.voiceover,
-        seedancePrompt: scene.seedancePrompt,
-        order: index,
-        goal: scene.goal,
-        materialUsage: scene.materialUsage,
-        negativePrompt: scene.negativePrompt,
-        previewVideoUrl: scene.previewVideoUrl,
-        renderStatus: scene.renderStatus
+    // visualBible — 浅层合同校验
+    if (data.visualBible) {
+      const vb = data.visualBible;
+      if (!vb.aspectRatio || !VALID_ASPECT_RATIOS.has(vb.aspectRatio)) {
+        throw new Error('visualBible.aspectRatio 必须为 9:16 或 16:9');
       }
-    })
-  );
-
-  await prisma.$transaction(transaction);
-
-  return getCreativePlanById(planId);
-};
-
-export const updateScene = async (planId: string, sceneId: string, data: Partial<SceneUpdateData>) => {
-  const scene = await prisma.scene.findFirst({
-    where: { id: sceneId, creativePlanId: planId }
-  });
-
-  if (!scene) {
-    throw new Error(`Scene ${sceneId} does not belong to plan ${planId}`);
-  }
-
-  if (data.duration !== undefined && (data.duration < 1 || data.duration > 15)) {
-    throw new Error('Duration must be between 1 and 15 seconds');
-  }
-  if (data.transition !== undefined && data.transition.trim() === '') {
-    throw new Error('Transition cannot be empty');
-  }
-  if (data.seedancePrompt !== undefined && data.seedancePrompt.trim() === '') {
-    throw new Error('Seedance prompt cannot be empty');
-  }
-
-  const updateData: any = { ...data };
-  // 移除不存在的字段，保持兼容
-  const allowedFields = ['duration', 'transition', 'subtitle', 'voiceover', 'seedancePrompt', 'visualDescription', 'goal', 'materialUsage', 'negativePrompt', 'previewVideoUrl', 'renderStatus'];
-  Object.keys(updateData).forEach(key => {
-    if (!allowedFields.includes(key)) {
-      delete updateData[key];
+      if (!vb.style || vb.style.trim().length === 0) {
+        throw new Error('visualBible.style 不能为空');
+      }
+      if (!vb.colorTone || vb.colorTone.trim().length === 0) {
+        throw new Error('visualBible.colorTone 不能为空');
+      }
+      if (!vb.lighting || vb.lighting.trim().length === 0) {
+        throw new Error('visualBible.lighting 不能为空');
+      }
+      if (!vb.cameraStyle || vb.cameraStyle.trim().length === 0) {
+        throw new Error('visualBible.cameraStyle 不能为空');
+      }
+      if (!vb.productAppearance || vb.productAppearance.trim().length === 0) {
+        throw new Error('visualBible.productAppearance 不能为空');
+      }
+      if (!vb.mainScenes || vb.mainScenes.length === 0 || !vb.mainScenes.every((s: string) => s && s.trim().length > 0)) {
+        throw new Error('visualBible.mainScenes 不能为空且每个元素必须是非空字符串');
+      }
+      if (!vb.continuityRules || vb.continuityRules.length === 0 || !vb.continuityRules.every((r: string) => r && r.trim().length > 0)) {
+        throw new Error('visualBible.continuityRules 不能为空且每个元素必须是非空字符串');
+      }
+      existing.visualBible = vb;
     }
-  });
 
-  const updatedScene = await prisma.scene.update({
-    where: { id: sceneId },
-    data: updateData
-  });
+    // scenes — 强制校验每个分镜的 Day 1 合同字段
+    if (data.scenes) {
+      if (!Array.isArray(data.scenes)) {
+        throw new Error('scenes 必须是数组');
+      }
+      const requiredString = ['id', 'creativePlanId', 'visualDescription', 'subtitle', 'voiceover', 'seedancePrompt'] as const;
+      for (let i = 0; i < data.scenes.length; i++) {
+        const s = data.scenes[i] as Record<string, unknown>;
+        const prefix = `scenes[${i}]`;
 
-  return updatedScene;
-};
+        for (const field of requiredString) {
+          if (typeof s[field] !== 'string' || (s[field] as string).trim().length === 0) {
+            throw new Error(`${prefix}.${field} 必须是非空字符串`);
+          }
+        }
+        if (s.creativePlanId !== id) {
+          throw new Error(`${prefix}.creativePlanId 必须与方案 id 一致: ${id}`);
+        }
+        if (typeof s.order !== 'number' || s.order < 1) {
+          throw new Error(`${prefix}.order 必须 >= 1，收到: ${s.order}`);
+        }
+        if (typeof s.duration !== 'number' || s.duration <= 0 || s.duration > 15) {
+          throw new Error(`${prefix}.duration 必须在 1-15 秒之间，收到: ${s.duration}`);
+        }
+        if (typeof s.transition !== 'string' || !VALID_TRANSITIONS.has(s.transition)) {
+          throw new Error(`${prefix}.transition 必须是 cut / fade / zoom 之一，收到: ${s.transition}`);
+        }
+        if (!Array.isArray(s.warnings)) {
+          throw new Error(`${prefix}.warnings 必须是数组`);
+        }
+      }
+      existing.scenes = [...data.scenes].sort((a, b) => a.order - b.order);
+    }
 
-export const regenerateScene = async (planId: string, sceneId: string) => {
-  const scene = await prisma.scene.findFirst({
-    where: { id: sceneId, creativePlanId: planId }
-  });
+    // 尝试更新数据库
+    try {
+      const updateData: any = {
+        title: existing.title,
+        hook: existing.hook,
+        adCopy: existing.adCopy,
+        cta: existing.cta,
+        complianceWarnings: existing.complianceWarnings,
+        continuityWarnings: existing.continuityWarnings,
+        status: existing.status,
+        visualBible: existing.visualBible,
+      };
 
-  if (!scene) {
-    throw new Error(`Scene ${sceneId} does not belong to plan ${planId}`);
+      if (existing.scenes) {
+        updateData.scenes = {
+          deleteMany: {},
+          create: [...existing.scenes].sort((a, b) => a.order - b.order).map(scene => ({
+            id: scene.id,
+            order: scene.order,
+            duration: scene.duration,
+            visualDescription: scene.visualDescription,
+            subtitle: scene.subtitle,
+            voiceover: scene.voiceover,
+            materialId: scene.materialId ?? null,
+            seedancePrompt: scene.seedancePrompt,
+            warnings: scene.warnings,
+            transition: scene.transition,
+            goal: scene.goal ?? null,
+            materialUsage: scene.materialUsage ?? null,
+            negativePrompt: scene.negativePrompt ?? null,
+            previewVideoUrl: scene.previewVideoUrl ?? null,
+            renderStatus: scene.renderStatus ?? null,
+          }))
+        };
+      }
+
+      await prisma.creativePlan.update({
+        where: { id },
+        data: updateData
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库更新失败，fallback到内存存储:', message);
+    }
+
+    // 始终更新内存
+    planStore.set(id, existing);
+    return existing;
   }
 
-  const regeneratedData = {
-    visualDescription: `重新生成的视觉描述 ${Date.now()}`,
-    subtitle: `重新生成的字幕 ${Date.now()}`,
-    voiceover: `重新生成的旁白 ${Date.now()}`,
-    seedancePrompt: `重新生成的Seedance提示词 ${Date.now()}`,
-    transition: Math.random() > 0.5 ? 'fade' : 'cut'
-  };
+  // 批准创意方案
+  async approveCreativePlan(id: string): Promise<CreativePlan | null> {
+    const existing = planStore.get(id);
+    if (!existing) return null;
 
-  const updatedScene = await prisma.scene.update({
-    where: { id: sceneId },
-    data: regeneratedData
-  });
+    existing.status = 'approved';
 
-  return updatedScene;
-};
+    // 尝试更新数据库
+    try {
+      await prisma.creativePlan.update({
+        where: { id },
+        data: { status: 'approved' }
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库更新失败，fallback到内存存储:', message);
+    }
 
-export const approvePlan = async (planId: string) => {
-  const plan = await prisma.creativePlan.update({
-    where: { id: planId },
-    data: { status: 'approved' }
-  });
+    planStore.set(id, existing);
+    return existing;
+  }
 
-  return plan;
-};
+  // 批量更新分镜
+  async batchUpdateScenes(planId: string, scenes: SceneUpdateData[]): Promise<CreativePlan | null> {
+    const existingScenes = await prisma.scene.findMany({
+      where: { creativePlanId: planId },
+      select: { id: true }
+    });
+    const existingSceneIds = new Set(existingScenes.map(s => s.id));
+    
+    for (const scene of scenes) {
+      if (!existingSceneIds.has(scene.id)) {
+        throw new Error(`Scene ${scene.id} does not belong to plan ${planId}`);
+      }
+    }
+
+    let totalDuration = 0;
+    for (const scene of scenes) {
+      if (scene.duration < 1 || scene.duration > 15) {
+        throw new Error(`Scene ${scene.id} duration must be between 1 and 15 seconds`);
+      }
+      if (!scene.transition || scene.transition.trim() === '') {
+        throw new Error(`Scene ${scene.id} transition cannot be empty`);
+      }
+      if (typeof scene.subtitle !== 'string') {
+        throw new Error(`Scene ${scene.id} subtitle must be a string`);
+      }
+      if (typeof scene.voiceover !== 'string') {
+        throw new Error(`Scene ${scene.id} voiceover must be a string`);
+      }
+      if (!scene.seedancePrompt || scene.seedancePrompt.trim() === '') {
+        throw new Error(`Scene ${scene.id} seedancePrompt cannot be empty`);
+      }
+      totalDuration += scene.duration;
+    }
+
+    if (totalDuration > 15) {
+      console.warn(`Total duration ${totalDuration} exceeds 15 seconds limit`);
+    }
+
+    const transaction = scenes.map((scene, index) => 
+      prisma.scene.update({
+        where: { id: scene.id },
+        data: {
+          duration: scene.duration,
+          transition: scene.transition,
+          subtitle: scene.subtitle,
+          voiceover: scene.voiceover,
+          seedancePrompt: scene.seedancePrompt,
+          order: index,
+          goal: scene.goal,
+          materialUsage: scene.materialUsage,
+          negativePrompt: scene.negativePrompt,
+          previewVideoUrl: scene.previewVideoUrl,
+          renderStatus: scene.renderStatus
+        }
+      })
+    );
+
+    await prisma.$transaction(transaction);
+
+    return this.getCreativePlan(planId);
+  }
+
+  // 更新单个分镜
+  async updateScene(planId: string, sceneId: string, data: Partial<SceneUpdateData>): Promise<Scene> {
+    const scene = await prisma.scene.findFirst({
+      where: { id: sceneId, creativePlanId: planId }
+    });
+
+    if (!scene) {
+      throw new Error(`Scene ${sceneId} does not belong to plan ${planId}`);
+    }
+
+    if (data.duration !== undefined && (data.duration < 1 || data.duration > 15)) {
+      throw new Error('Duration must be between 1 and 15 seconds');
+    }
+    if (data.transition !== undefined && data.transition.trim() === '') {
+      throw new Error('Transition cannot be empty');
+    }
+    if (data.seedancePrompt !== undefined && data.seedancePrompt.trim() === '') {
+      throw new Error('Seedance prompt cannot be empty');
+    }
+
+    const updateData: any = { ...data };
+    // 移除不存在的字段，保持兼容
+    const allowedFields = ['duration', 'transition', 'subtitle', 'voiceover', 'seedancePrompt', 'visualDescription', 'goal', 'materialUsage', 'negativePrompt', 'previewVideoUrl', 'renderStatus'];
+    Object.keys(updateData).forEach(key => {
+      if (!allowedFields.includes(key)) {
+        delete updateData[key];
+      }
+    });
+
+    const updatedScene = await prisma.scene.update({
+      where: { id: sceneId },
+      data: updateData
+    });
+
+    // 同步更新内存
+    const plan = planStore.get(planId);
+    if (plan) {
+      const sceneIndex = plan.scenes.findIndex(s => s.id === sceneId);
+      if (sceneIndex > -1) {
+        plan.scenes[sceneIndex] = {
+          ...plan.scenes[sceneIndex],
+          ...updatedScene
+        };
+        planStore.set(planId, plan);
+      }
+    }
+
+    return {
+      id: updatedScene.id,
+      creativePlanId: updatedScene.creativePlanId,
+      order: updatedScene.order,
+      duration: updatedScene.duration,
+      visualDescription: updatedScene.visualDescription,
+      subtitle: updatedScene.subtitle,
+      voiceover: updatedScene.voiceover,
+      materialId: updatedScene.materialId ?? undefined,
+      seedancePrompt: updatedScene.seedancePrompt,
+      warnings: (updatedScene.warnings as string[]) || [],
+      transition: updatedScene.transition as any,
+      goal: updatedScene.goal as any,
+      materialUsage: updatedScene.materialUsage as any,
+      negativePrompt: updatedScene.negativePrompt,
+      previewVideoUrl: updatedScene.previewVideoUrl,
+      renderStatus: updatedScene.renderStatus as any
+    };
+  }
+
+  private buildProductStub(productId: string): Product {
+    return {
+      id: productId,
+      title: '演示商品',
+      category: '通用',
+      sellingPoints: ['品质优良', '性价比高'],
+      targetAudience: '大众消费者',
+      usageScene: '日常使用',
+      createdAt: new Date().toISOString(),
+    };
+  }
+}

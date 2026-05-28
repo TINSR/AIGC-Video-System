@@ -1,13 +1,21 @@
 import { Router } from 'express';
-import * as creativePlanController from './creativePlan.controller';
+import { CreativePlanController } from './creativePlan.controller';
+import { CreativePlanService } from './creativePlan.service';
+import { planStore } from '../../memory-store';
 
 const router = Router();
+const controller = new CreativePlanController();
+const creativePlanService = new CreativePlanService();
 
-router.get('/:id', creativePlanController.getCreativePlan);
-router.put('/:id/scenes', creativePlanController.batchUpdateScenes);
-router.put('/:id/scenes/:sceneId', creativePlanController.updateScene);
-router.post('/:id/scenes/:sceneId/regenerate', creativePlanController.regenerateScene);
-router.post('/:id/approve', creativePlanController.approvePlan);
-router.post('/:id/render', creativePlanController.renderPlan);
+router.post('/products/:productId/creative-plans/generate', controller.generate);
+router.get('/products/:productId/creative-plans', controller.list);
+router.get('/creative-plans/:id', controller.get);
+router.put('/creative-plans/:id', controller.update);
+router.post('/creative-plans/:id/approve', controller.approve);
+router.post('/creative-plans/:id/scenes/:sceneId/regenerate', controller.regenerateScene);
+
+router.put('/creative-plans/:id/scenes/:sceneId', controller.updateScene);
+router.put('/creative-plans/:id/scenes', controller.batchUpdateScenes);
+router.post('/creative-plans/:id/render', controller.renderPlan);
 
 export default router;
