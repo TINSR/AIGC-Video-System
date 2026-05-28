@@ -79,7 +79,8 @@ export class CreativePlanPipeline {
         durationMs: now() - start,
       });
 
-      // Stage 6: Seedance Prompt — inject VisualBible into each scene
+      // Stage 6: Sync pipeline VisualBible to draft, then inject into prompts
+      draft.visualBible = visualBible;
       this.injectVisualBibleIntoPrompts(draft, visualBible);
 
       // Stage 7: Assign scene goals
