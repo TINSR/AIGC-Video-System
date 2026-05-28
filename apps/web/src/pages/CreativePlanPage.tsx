@@ -2,6 +2,7 @@ import { Alert, Button, Form, Input, Space, Spin, Typography, message } from "an
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Product, ScriptStyle } from "@clipshop/shared";
+import { PlanGenerationProgress } from "../components/PlanGenerationProgress";
 import { StyleTemplateSelector } from "../components/StyleTemplateSelector";
 import { api } from "../services/api";
 
@@ -70,6 +71,7 @@ export function CreativePlanPage() {
         </div>
       </section>
       {error ? <Alert type="error" showIcon message={error} /> : null}
+      {generating ? <PlanGenerationProgress active={generating} /> : null}
       <Form
         layout="vertical"
         className="surface generation-form"

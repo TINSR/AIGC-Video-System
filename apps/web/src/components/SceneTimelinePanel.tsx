@@ -73,6 +73,8 @@ export function SceneTimelinePanel({
             <div className="timeline-scene-header">
               <Space wrap>
                 <Tag color="purple">Scene {index + 1}</Tag>
+                {scene.goal ? <Tag color="geekblue">goal: {scene.goal}</Tag> : null}
+                {scene.materialUsage ? <Tag color="cyan">material: {scene.materialUsage}</Tag> : null}
                 <Tag>{scene.duration}s</Tag>
                 <Tag>{scene.transition}</Tag>
                 {scene.warnings.length > 0 ? (

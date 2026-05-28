@@ -5,6 +5,7 @@ import { api } from "../services/api";
 import { ComplianceWarningList } from "./ComplianceWarningList";
 import { SceneTimelinePanel } from "./SceneTimelinePanel";
 import { ScriptResultPanel } from "./ScriptResultPanel";
+import { StrategyReviewPanel } from "./StrategyReviewPanel";
 import { VisualBiblePanel } from "./VisualBiblePanel";
 
 type Props = {
@@ -167,6 +168,8 @@ export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) 
         <Alert type="success" showIcon message="方案已审核通过，可以创建视频生成任务。" />
       )}
       {dirty ? <Alert type="warning" showIcon message="当前有未保存剪辑；点击审核或 render 时会先自动保存。" /> : null}
+
+      <StrategyReviewPanel plan={currentPlan} productName={productName} />
 
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={12}>

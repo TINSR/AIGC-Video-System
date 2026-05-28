@@ -3,9 +3,10 @@ import type { Product } from "@clipshop/shared";
 
 type ProductFormProps = {
   onSubmit: (values: Omit<Product, "id" | "createdAt">) => void;
+  submitting?: boolean;
 };
 
-export function ProductForm({ onSubmit }: ProductFormProps) {
+export function ProductForm({ onSubmit, submitting }: ProductFormProps) {
   return (
     <Form
       layout="vertical"
@@ -46,7 +47,7 @@ export function ProductForm({ onSubmit }: ProductFormProps) {
       <Form.Item label="使用场景" name="usageScene" rules={[{ required: true, message: "请输入使用场景" }]}>
         <Input.TextArea rows={3} placeholder="例如：办公室、健身房、旅行途中" />
       </Form.Item>
-      <Button type="primary" htmlType="submit" size="large">
+      <Button type="primary" htmlType="submit" size="large" loading={submitting}>
         保存商品并进入素材库
       </Button>
     </Form>
