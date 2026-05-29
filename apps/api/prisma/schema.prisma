@@ -48,6 +48,12 @@ model CreativePlan {
   complianceWarnings  Json?
   continuityWarnings  Json?
   promptTrace         Json?
+  stage               String?
+  renderMode          String?
+  agentTrace          Json?
+  strategyId          String?
+  version             Int?
+  parentPlanId        String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   product             Product  @relation(fields: [productId], references: [id])
@@ -67,6 +73,11 @@ model Scene {
   seedancePrompt    String @db.Text
   warnings          Json?
   transition        String
+  goal              String?
+  materialUsage     String?
+  negativePrompt    String?
+  previewVideoUrl   String?
+  renderStatus      String?
   creativePlan      CreativePlan @relation(fields: [creativePlanId], references: [id])
 }
 
@@ -80,6 +91,9 @@ model GenerationTask {
   provider       String    @default("seedance_1_5")
   outputVideoUrl String?
   errorMessage   String?
+  type           String?
+  resultId       String?
+  renderMode     String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   product        Product   @relation(fields: [productId], references: [id])

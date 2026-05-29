@@ -10,6 +10,62 @@ import type { CreativePlan, Scene, Material, Product } from '@shared/types';
 const VALID_TRANSITIONS = new Set(['cut', 'fade', 'zoom']);
 const VALID_ASPECT_RATIOS = new Set(['9:16', '16:9']);
 
+interface SceneUpdateData {
+  id: string;
+  duration: number;
+  transition: string;
+  subtitle: string;
+  voiceover: string;
+  seedancePrompt: string;
+  goal?: string;
+  materialUsage?: string;
+  negativePrompt?: string;
+  previewVideoUrl?: string;
+  renderStatus?: string;
+}
+
+function normalizeWarnings(value: unknown): string[] {
+  return Array.isArray(value) ? (value as string[]) : [];
+}
+
+function mapSceneFromDb(scene: {
+  id: string;
+  creativePlanId: string;
+  order: number;
+  duration: number;
+  visualDescription: string;
+  subtitle: string;
+  voiceover: string;
+  materialId: string | null;
+  seedancePrompt: string;
+  warnings: unknown;
+  transition: string;
+  goal?: string | null;
+  materialUsage?: string | null;
+  negativePrompt?: string | null;
+  previewVideoUrl?: string | null;
+  renderStatus?: string | null;
+}): Scene {
+  return {
+    id: scene.id,
+    creativePlanId: scene.creativePlanId,
+    order: scene.order,
+    duration: scene.duration,
+    visualDescription: scene.visualDescription,
+    subtitle: scene.subtitle,
+    voiceover: scene.voiceover,
+    materialId: scene.materialId ?? undefined,
+    seedancePrompt: scene.seedancePrompt,
+    warnings: normalizeWarnings(scene.warnings),
+    transition: scene.transition as Scene['transition'],
+    goal: (scene.goal as Scene['goal']) ?? undefined,
+    materialUsage: (scene.materialUsage as Scene['materialUsage']) ?? undefined,
+    negativePrompt: scene.negativePrompt ?? undefined,
+    previewVideoUrl: scene.previewVideoUrl ?? undefined,
+    renderStatus: (scene.renderStatus as Scene['renderStatus']) ?? undefined,
+  };
+}
+
 export class CreativePlanService {
   private mockAiProvider: MockAiProvider;
   private complianceAgent: ComplianceAgent;
@@ -79,6 +135,11 @@ export class CreativePlanService {
               seedancePrompt: scene.seedancePrompt,
               warnings: scene.warnings,
               transition: scene.transition,
+              goal: scene.goal ?? null,
+              materialUsage: scene.materialUsage ?? null,
+              negativePrompt: scene.negativePrompt ?? null,
+              previewVideoUrl: scene.previewVideoUrl ?? null,
+              renderStatus: scene.renderStatus ?? null,
             }))
           }
         },
@@ -166,22 +227,16 @@ export class CreativePlanService {
           complianceWarnings: (dbPlan.complianceWarnings as string[]) || [],
           continuityWarnings: (dbPlan.continuityWarnings as string[]) || [],
           createdAt: dbPlan.createdAt.toISOString(),
+          stage: (dbPlan.stage as CreativePlan['stage']) ?? undefined,
+          renderMode: (dbPlan.renderMode as CreativePlan['renderMode']) ?? undefined,
+          agentTrace: (dbPlan.agentTrace as CreativePlan['agentTrace']) ?? undefined,
+          strategyId: dbPlan.strategyId ?? undefined,
+          version: dbPlan.version ?? undefined,
+          parentPlanId: dbPlan.parentPlanId ?? undefined,
           scenes: dbPlan.scenes
             .slice()
             .sort((a, b) => a.order - b.order)
-            .map(scene => ({
-            id: scene.id,
-            creativePlanId: scene.creativePlanId,
-            order: scene.order,
-            duration: scene.duration,
-            visualDescription: scene.visualDescription,
-            subtitle: scene.subtitle,
-            voiceover: scene.voiceover,
-            materialId: scene.materialId ?? undefined,
-            seedancePrompt: scene.seedancePrompt,
-            warnings: (scene.warnings as string[]) || [],
-            transition: scene.transition as any,
-          }))
+            .map(mapSceneFromDb),
         };
 
         // 同步到内存，保证后续操作一致
@@ -304,6 +359,11 @@ export class CreativePlanService {
             seedancePrompt: scene.seedancePrompt,
             warnings: scene.warnings,
             transition: scene.transition,
+            goal: scene.goal ?? null,
+            materialUsage: scene.materialUsage ?? null,
+            negativePrompt: scene.negativePrompt ?? null,
+            previewVideoUrl: scene.previewVideoUrl ?? null,
+            renderStatus: scene.renderStatus ?? null,
           }))
         };
       }
@@ -342,6 +402,94 @@ export class CreativePlanService {
 
     planStore.set(id, existing);
     return existing;
+  }
+
+  async batchUpdateScenes(planId: string, scenes: SceneUpdateData[]): Promise<CreativePlan | null> {
+    const existing = planStore.get(planId);
+    if (!existing) return null;
+
+    for (let i = 0; i < scenes.length; i++) {
+      const scene = scenes[i];
+      const prefix = `scenes[${i}]`;
+      if (!existing.scenes.some((s) => s.id === scene.id)) {
+        throw new Error(`Scene ${scene.id} does not belong to plan ${planId}`);
+      }
+      if (scene.duration < 1 || scene.duration > 15) {
+        throw new Error(`${prefix} duration must be between 1 and 15 seconds`);
+      }
+      if (!scene.transition || scene.transition.trim() === '') {
+        throw new Error(`${prefix} transition cannot be empty`);
+      }
+      if (!scene.seedancePrompt || scene.seedancePrompt.trim() === '') {
+        throw new Error(`${prefix} seedancePrompt cannot be empty`);
+      }
+    }
+
+    const nextScenes: Scene[] = scenes.map((scene, index) => {
+      const current = existing.scenes.find((s) => s.id === scene.id)!;
+      return {
+        ...current,
+        duration: scene.duration,
+        transition: scene.transition as Scene['transition'],
+        subtitle: scene.subtitle,
+        voiceover: scene.voiceover,
+        seedancePrompt: scene.seedancePrompt,
+        order: index + 1,
+        goal: scene.goal as Scene['goal'],
+        materialUsage: scene.materialUsage as Scene['materialUsage'],
+        negativePrompt: scene.negativePrompt,
+        previewVideoUrl: scene.previewVideoUrl,
+        renderStatus: scene.renderStatus as Scene['renderStatus'],
+        warnings: current.warnings,
+      };
+    });
+
+    return this.updateCreativePlan(planId, { scenes: nextScenes });
+  }
+
+  async updateScene(planId: string, sceneId: string, data: Partial<SceneUpdateData>): Promise<Scene> {
+    const existing = planStore.get(planId);
+    if (!existing) {
+      throw new Error(`Scene ${sceneId} does not belong to plan ${planId}`);
+    }
+
+    const sceneIndex = existing.scenes.findIndex((s) => s.id === sceneId);
+    if (sceneIndex < 0) {
+      throw new Error(`Scene ${sceneId} does not belong to plan ${planId}`);
+    }
+
+    if (data.duration !== undefined && (data.duration < 1 || data.duration > 15)) {
+      throw new Error('Duration must be between 1 and 15 seconds');
+    }
+    if (data.transition !== undefined && data.transition.trim() === '') {
+      throw new Error('Transition cannot be empty');
+    }
+    if (data.seedancePrompt !== undefined && data.seedancePrompt.trim() === '') {
+      throw new Error('Seedance prompt cannot be empty');
+    }
+
+    const current = existing.scenes[sceneIndex];
+    const updatedScene: Scene = {
+      ...current,
+      id: sceneId,
+      creativePlanId: planId,
+      duration: data.duration ?? current.duration,
+      transition: (data.transition ?? current.transition) as Scene['transition'],
+      subtitle: data.subtitle ?? current.subtitle,
+      voiceover: data.voiceover ?? current.voiceover,
+      seedancePrompt: data.seedancePrompt ?? current.seedancePrompt,
+      goal: (data.goal ?? current.goal) as Scene['goal'],
+      materialUsage: (data.materialUsage ?? current.materialUsage) as Scene['materialUsage'],
+      negativePrompt: data.negativePrompt ?? current.negativePrompt,
+      previewVideoUrl: data.previewVideoUrl ?? current.previewVideoUrl,
+      renderStatus: (data.renderStatus ?? current.renderStatus) as Scene['renderStatus'],
+      warnings: current.warnings,
+    };
+
+    const nextScenes = [...existing.scenes];
+    nextScenes[sceneIndex] = updatedScene;
+    await this.updateCreativePlan(planId, { scenes: nextScenes });
+    return updatedScene;
   }
 
   private buildProductStub(productId: string): Product {

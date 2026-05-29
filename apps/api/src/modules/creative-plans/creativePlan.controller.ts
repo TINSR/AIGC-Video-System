@@ -246,4 +246,50 @@ export class CreativePlanController {
       });
     }
   };
+
+  batchUpdateScenes = async (req: Request, res: Response<ApiResponse<CreativePlan>>) => {
+    try {
+      const { id } = req.params;
+      const { scenes } = req.body;
+
+      const plan = await this.creativePlanService.batchUpdateScenes(id, scenes);
+      if (!plan) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '创意方案不存在' },
+        });
+      }
+
+      res.json({ success: true, data: plan });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '批量更新分镜失败';
+      const status = message.includes('does not belong to plan') ? 400 : 500;
+      res.status(status).json({
+        success: false,
+        error: {
+          code: status === 400 ? 'INVALID_SCENE' : 'INTERNAL_ERROR',
+          message,
+        },
+      });
+    }
+  };
+
+  updateScene = async (req: Request, res: Response<ApiResponse<Scene>>) => {
+    try {
+      const { id, sceneId } = req.params;
+      const scene = await this.creativePlanService.updateScene(id, sceneId, req.body);
+
+      res.json({ success: true, data: scene });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '更新分镜失败';
+      const status = message.includes('does not belong to plan') ? 404 : 500;
+      res.status(status).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message,
+        },
+      });
+    }
+  };
 }
