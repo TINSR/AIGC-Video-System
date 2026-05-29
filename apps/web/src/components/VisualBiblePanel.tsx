@@ -8,7 +8,7 @@ type Props = {
 export function VisualBiblePanel({ visualBible }: Props) {
   return (
     <Card className="surface" title="Visual Bible">
-      <Descriptions column={1} size="small">
+      <Descriptions column={1} size="small" style={{ marginBottom: '16px' }}>
         <Descriptions.Item label="画幅">{visualBible.aspectRatio}</Descriptions.Item>
         <Descriptions.Item label="风格">{visualBible.style}</Descriptions.Item>
         <Descriptions.Item label="色调">{visualBible.colorTone}</Descriptions.Item>
@@ -16,8 +16,9 @@ export function VisualBiblePanel({ visualBible }: Props) {
         <Descriptions.Item label="镜头">{visualBible.cameraStyle}</Descriptions.Item>
         <Descriptions.Item label="商品外观">{visualBible.productAppearance}</Descriptions.Item>
       </Descriptions>
+
       <Typography.Text type="secondary">主场景</Typography.Text>
-      <Space wrap className="tag-row">
+      <Space wrap className="tag-row visual-bible-list">
         {visualBible.mainScenes.map((scene) => (
           <Tag color="purple" key={scene}>
             {scene}
@@ -25,7 +26,7 @@ export function VisualBiblePanel({ visualBible }: Props) {
         ))}
       </Space>
       <Typography.Text type="secondary">连续性规则</Typography.Text>
-      <Space direction="vertical" className="rule-list">
+      <Space wrap className="rule-list visual-bible-list">
         {visualBible.continuityRules.map((rule) => (
           <Tag key={rule}>{rule}</Tag>
         ))}

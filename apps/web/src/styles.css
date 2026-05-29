@@ -235,6 +235,18 @@ textarea {
   margin-top: 14px;
 }
 
+.visual-bible-list {
+  width: 100%;
+  margin-bottom: 14px;
+}
+
+.visual-bible-list .ant-tag {
+  width: fit-content;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.5;
+}
+
 .material-uploader {
   border-radius: 8px;
   background: rgba(17, 18, 31, 0.7);
@@ -316,6 +328,35 @@ textarea {
 .scene-timeline {
   display: grid;
   gap: 16px;
+}
+
+.strategy-review,
+.plan-generation-progress {
+  display: grid;
+  gap: 16px;
+}
+
+.strategy-heading {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.strategy-heading h3,
+.plan-generation-progress h4,
+.agent-trace h4 {
+  margin: 4px 0 0 !important;
+}
+
+.strategy-descriptions {
+  padding-top: 4px;
+}
+
+.strategy-warning-list,
+.agent-trace {
+  display: grid;
+  gap: 10px;
 }
 
 .timeline-toolbar {
@@ -516,7 +557,8 @@ textarea {
   }
 
   .timeline-toolbar,
-  .timeline-scene-header {
+  .timeline-scene-header,
+  .strategy-heading {
     flex-direction: column;
   }
 
