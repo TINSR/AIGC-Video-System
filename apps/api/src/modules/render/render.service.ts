@@ -223,7 +223,7 @@ export class RenderService {
       task.updatedAt = new Date().toISOString();
       taskStore.set(task.id, task);
 
-      const outputDir = './outputs';
+      const outputDir = process.env.OUTPUT_DIR || './outputs';
       if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
       }
@@ -259,7 +259,7 @@ export class RenderService {
   // 下载远端视频到本地 /outputs，返回本地 URL 或 null
   private async downloadRemoteVideo(remoteUrl: string, taskId: string): Promise<string | null> {
     try {
-      const outputDir = './outputs';
+      const outputDir = process.env.OUTPUT_DIR || './outputs';
       if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
       }
