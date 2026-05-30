@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
+import * as path from 'path';
 import { Seedance15Provider } from '../../providers/video/Seedance15Provider';
 import { FFmpegComposeProvider } from '../../providers/video/FFmpegComposeProvider';
 import { taskStore, planStore, taskMaterialsStore } from '../../memory-store';
@@ -148,11 +149,13 @@ export class RenderService {
 
       if (status.status === 'success') {
         if (status.videoUrl) {
+          // 尝试下载远端视频到本地 /outputs
+          const localUrl = await this.downloadRemoteVideo(status.videoUrl, task.id);
           task.progress = 100;
           task.status = 'success';
-          task.outputVideoUrl = status.videoUrl;
+          task.outputVideoUrl = localUrl || status.videoUrl;
           task.currentStep = STEP_MAP[100];
-          task.logs.push(makeLog('info', `Seedance 生成完成：${status.videoUrl}`));
+          task.logs.push(makeLog('info', `Seedance 生成完成，视频：${task.outputVideoUrl}${localUrl ? '（已下载到本地）' : '（远端 URL）'}`));
           task.updatedAt = new Date().toISOString();
           taskStore.set(task.id, task);
           return;
@@ -250,6 +253,31 @@ export class RenderService {
     } finally {
       task.updatedAt = new Date().toISOString();
       taskStore.set(task.id, task);
+    }
+  }
+
+  // 下载远端视频到本地 /outputs，返回本地 URL 或 null
+  private async downloadRemoteVideo(remoteUrl: string, taskId: string): Promise<string | null> {
+    try {
+      const outputDir = './outputs';
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+      const localPath = path.join(outputDir, `${taskId}.mp4`);
+
+      const response = await fetch(remoteUrl);
+      if (!response.ok) {
+        console.warn(`[RenderService] 下载远端视频失败: HTTP ${response.status}`);
+        return null;
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      fs.writeFileSync(localPath, buffer);
+      return `/outputs/${taskId}.mp4`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[RenderService] 下载远端视频异常: ${message}`);
+      return null;
     }
   }
 

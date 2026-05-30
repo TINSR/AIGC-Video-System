@@ -132,7 +132,7 @@ export class Seedance15OfficialAdapter {
     const productSection = [
       '【产品信息】',
       `商品外观：${vb.productAppearance}`,
-      `核心卖点：${vb.mainScenes.join('、')}`,
+      `适用场景：${vb.mainScenes.join('、')}`,
     ].join('\n');
 
     // 全局视觉设定段
@@ -148,13 +148,15 @@ export class Seedance15OfficialAdapter {
     // 分镜脚本段
     const scenePrompts = sortedScenes
       .map(scene => {
-        const parts = [
-          `分镜${scene.order}（${scene.duration}秒）：`,
-          scene.visualDescription,
-          scene.seedancePrompt,
-        ];
-        if (scene.subtitle) parts.push(`字幕：${scene.subtitle}`);
-        if (scene.transition && scene.order < sortedScenes.length) parts.push(`转场：${scene.transition}`);
+        const goalLabel = scene.goal ? { hook: '开场吸引', feature: '功能展示', proof: '效果证明', cta: '促单转化', full_demo: '完整演示' }[scene.goal] || scene.goal : '';
+      const parts = [
+        `分镜${scene.order}${goalLabel ? `（${goalLabel}）` : ''}（${scene.duration}秒）：`,
+        scene.visualDescription,
+        scene.seedancePrompt,
+      ];
+      if (scene.subtitle) parts.push(`字幕：${scene.subtitle}`);
+      if (scene.voiceover) parts.push(`旁白：${scene.voiceover}`);
+      if (scene.transition && scene.order < sortedScenes.length) parts.push(`转场：${scene.transition}`);
         return parts.join(' ');
       })
       .join('\n');
@@ -166,6 +168,7 @@ export class Seedance15OfficialAdapter {
       '【要求】',
       '- 竖屏 9:16，电商带货短视频',
       '- 商品始终清晰可见，不要出现与商品外观冲突的元素',
+      '- 禁止改变商品颜色、形状、核心卖点',
       '- 字幕简洁有力，节奏适合 15 秒短视频',
       '- 画面明亮、真实、有购买吸引力',
       '- 总时长不超过 15 秒',

@@ -1,5 +1,5 @@
 import type { CreativePlanInput, CreativePlanDraft, SceneDraft } from '@shared/types/ai-providers';
-import type { Product, Material, VisualBible, ScriptStyle, AgentTrace, SceneGoal } from '@shared/types';
+import type { Product, Material, VisualBible, ScriptStyle, AgentTrace, SceneGoal, CreativeStrategy, MaterialUsage } from '@shared/types';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
 
 interface PipelineContext {
@@ -19,7 +19,7 @@ interface ProductAnalysis {
   constraints: string[];
 }
 
-interface CreativeStrategy {
+interface PipelineStrategy {
   videoGoal: string;
   targetAudience: string;
   sellingPointOrder: string[];
@@ -83,24 +83,35 @@ export class CreativePlanPipeline {
       draft.visualBible = visualBible;
       this.injectVisualBibleIntoPrompts(draft, visualBible);
 
-      // Stage 7: Assign scene goals
+      // Stage 7: Assign scene goals and materialUsage
       this.assignSceneGoals(draft);
+      this.assignMaterialUsage(draft, input.materials);
 
-      // Stage 8: Compliance (reuse existing — run in CreativePlanService)
+      // Stage 8: Build CreativeStrategy for output
+      const creativeStrategy: CreativeStrategy = {
+        videoGoal: strategy.videoGoal,
+        targetAudience: strategy.targetAudience,
+        sellingPointOrder: strategy.sellingPointOrder,
+        emotionalArc: strategy.emotionalArc,
+        styleDirection: strategy.styleDirection,
+        recommendedSceneCount: strategy.sceneCount,
+      };
+
+      // Stage 9: Compliance (reuse existing — run in CreativePlanService)
       ctx.trace.push({
         agent: 'Compliance',
         status: 'success',
         summary: '合规检查将在 CreativePlanService 中执行',
       });
 
-      // Stage 9: Continuity (reuse existing — run in CreativePlanService)
+      // Stage 10: Continuity (reuse existing — run in CreativePlanService)
       ctx.trace.push({
         agent: 'Continuity',
         status: 'success',
         summary: '连贯性检查将在 CreativePlanService 中执行',
       });
 
-      return { ...draft, agentTrace: ctx.trace };
+      return { ...draft, creativeStrategy, agentTrace: ctx.trace };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.trace.push({
@@ -113,6 +124,7 @@ export class CreativePlanPipeline {
       const draft = await this.mockProvider.generateCreativePlan(input);
       this.injectVisualBibleIntoPrompts(draft, draft.visualBible);
       this.assignSceneGoals(draft);
+      this.assignMaterialUsage(draft, input.materials);
       return { ...draft, agentTrace: ctx.trace };
     }
   }
@@ -141,9 +153,9 @@ export class CreativePlanPipeline {
   }
 
   // Stage 2: Creative Strategy
-  private createStrategy(ctx: PipelineContext, analysis: ProductAnalysis): CreativeStrategy {
+  private createStrategy(ctx: PipelineContext, analysis: ProductAnalysis): PipelineStrategy {
     const start = now();
-    const strategy: CreativeStrategy = {
+    const strategy: PipelineStrategy = {
       videoGoal: `展示${ctx.product.title}的核心卖点，引导用户购买`,
       targetAudience: analysis.targetUsers,
       sellingPointOrder: analysis.sellingPoints,
@@ -213,6 +225,23 @@ export class CreativePlanPipeline {
     const goals = getSceneGoals(draft.scenes.length);
     for (let i = 0; i < draft.scenes.length; i++) {
       (draft.scenes[i] as any).goal = goals[i] || 'cta';
+    }
+  }
+
+  // Assign materialUsage based on material type and scene position
+  private assignMaterialUsage(draft: CreativePlanDraft, materials: Material[]): void {
+    const hasVideo = materials.some(m => m.type === 'video');
+    const hasImage = materials.some(m => m.type === 'image');
+
+    for (const scene of draft.scenes) {
+      if (scene.materialId) {
+        const mat = materials.find(m => m.id === scene.materialId);
+        (scene as any).materialUsage = mat?.type === 'video' ? 'source_clip' : 'reference_image';
+      } else if (hasVideo || hasImage) {
+        (scene as any).materialUsage = 'reference_image';
+      } else {
+        (scene as any).materialUsage = 'prompt_only';
+      }
     }
   }
 }
