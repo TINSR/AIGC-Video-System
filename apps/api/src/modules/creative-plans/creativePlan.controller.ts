@@ -86,8 +86,7 @@ export class CreativePlanController {
   list = async (req: Request, res: Response<ApiResponse<CreativePlan[]>>) => {
     try {
       const { productId } = req.params;
-      const plans = Array.from(planStore.values())
-        .filter(p => p.productId === productId);
+      const plans = await this.creativePlanService.listCreativePlans(productId);
       res.json({
         success: true,
         data: plans,

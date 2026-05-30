@@ -72,6 +72,24 @@ export class RenderController {
   };
 
   // 获取任务状态
+  list = async (_req: Request, res: Response<ApiResponse<GenerationTask[]>>) => {
+    try {
+      const tasks = await this.renderService.listTasks();
+      res.json({
+        success: true,
+        data: tasks,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to list tasks',
+        },
+      });
+    }
+  };
+
   getStatus = async (req: Request, res: Response<ApiResponse<GenerationTask>>) => {
     try {
       const { id } = req.params;

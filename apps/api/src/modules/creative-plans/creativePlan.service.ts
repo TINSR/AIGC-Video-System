@@ -67,6 +67,53 @@ function mapSceneFromDb(scene: {
   };
 }
 
+function mapCreativePlanFromDb(dbPlan: {
+  id: string;
+  productId: string;
+  status: string;
+  style: string;
+  title: string;
+  hook: string;
+  adCopy: string;
+  cta: string;
+  visualBible: unknown;
+  complianceWarnings: unknown;
+  continuityWarnings: unknown;
+  createdAt: Date;
+  stage?: string | null;
+  renderMode?: string | null;
+  agentTrace?: unknown;
+  strategyId?: string | null;
+  version?: number | null;
+  parentPlanId?: string | null;
+  scenes: Parameters<typeof mapSceneFromDb>[0][];
+}): CreativePlan {
+  return {
+    id: dbPlan.id,
+    productId: dbPlan.productId,
+    status: dbPlan.status as CreativePlan['status'],
+    style: dbPlan.style as CreativePlan['style'],
+    title: dbPlan.title,
+    hook: dbPlan.hook,
+    adCopy: dbPlan.adCopy,
+    cta: dbPlan.cta,
+    visualBible: dbPlan.visualBible as CreativePlan['visualBible'],
+    complianceWarnings: normalizeWarnings(dbPlan.complianceWarnings),
+    continuityWarnings: normalizeWarnings(dbPlan.continuityWarnings),
+    createdAt: dbPlan.createdAt.toISOString(),
+    stage: (dbPlan.stage as CreativePlan['stage']) ?? undefined,
+    renderMode: (dbPlan.renderMode as CreativePlan['renderMode']) ?? undefined,
+    agentTrace: dbPlan.agentTrace as CreativePlan['agentTrace'],
+    strategyId: dbPlan.strategyId ?? undefined,
+    version: dbPlan.version ?? undefined,
+    parentPlanId: dbPlan.parentPlanId ?? undefined,
+    scenes: dbPlan.scenes
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map(mapSceneFromDb),
+  };
+}
+
 export class CreativePlanService {
   private mockAiProvider: MockAiProvider;
   private pipeline: CreativePlanPipeline;
@@ -224,30 +271,7 @@ export class CreativePlanService {
       });
 
       if (dbPlan) {
-        const plan: CreativePlan = {
-          id: dbPlan.id,
-          productId: dbPlan.productId,
-          status: dbPlan.status as any,
-          style: dbPlan.style as any,
-          title: dbPlan.title,
-          hook: dbPlan.hook,
-          adCopy: dbPlan.adCopy,
-          cta: dbPlan.cta,
-          visualBible: dbPlan.visualBible as any,
-          complianceWarnings: (dbPlan.complianceWarnings as string[]) || [],
-          continuityWarnings: (dbPlan.continuityWarnings as string[]) || [],
-          createdAt: dbPlan.createdAt.toISOString(),
-          stage: (dbPlan.stage as CreativePlan['stage']) ?? undefined,
-          renderMode: (dbPlan.renderMode as CreativePlan['renderMode']) ?? undefined,
-          agentTrace: (dbPlan.agentTrace as CreativePlan['agentTrace']) ?? undefined,
-          strategyId: dbPlan.strategyId ?? undefined,
-          version: dbPlan.version ?? undefined,
-          parentPlanId: dbPlan.parentPlanId ?? undefined,
-          scenes: dbPlan.scenes
-            .slice()
-            .sort((a, b) => a.order - b.order)
-            .map(mapSceneFromDb),
-        };
+        const plan = mapCreativePlanFromDb(dbPlan);
 
         // 同步到内存，保证后续操作一致
         planStore.set(id, plan);
@@ -260,6 +284,29 @@ export class CreativePlanService {
 
     // fallback到内存
     return planStore.get(id) ?? null;
+  }
+
+  async listCreativePlans(productId: string): Promise<CreativePlan[]> {
+    try {
+      const dbPlans = await prisma.creativePlan.findMany({
+        where: { productId },
+        orderBy: { createdAt: 'desc' },
+        include: { scenes: { orderBy: { order: 'asc' } } },
+      });
+
+      if (dbPlans.length > 0) {
+        const plans = dbPlans.map(mapCreativePlanFromDb);
+        plans.forEach((plan) => planStore.set(plan.id, plan));
+        return plans;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] list from database failed, falling back to memory:', message);
+    }
+
+    return Array.from(planStore.values())
+      .filter((plan) => plan.productId === productId)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   }
 
   // 更新创意方案 — 支持字段级更新，含浅层合同校验

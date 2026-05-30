@@ -54,8 +54,23 @@ export async function loadTaskFromDatabase(taskId: string): Promise<GenerationTa
     return mapDbTask(record);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn('[taskPersistence] 读取任务失败，将使用内存:', message);
+    console.warn('[taskPersistence] read task failed, falling back to memory:', message);
     return null;
+  }
+}
+
+export async function listTasksFromDatabase(limit = 20): Promise<GenerationTask[]> {
+  try {
+    const records = await prisma.generationTask.findMany({
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+      include: { logs: { orderBy: { timestamp: 'asc' } } },
+    });
+    return records.map(mapDbTask);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[taskPersistence] list tasks failed, falling back to memory:', message);
+    return [];
   }
 }
 
@@ -88,20 +103,24 @@ export async function persistTaskToDatabase(task: GenerationTask): Promise<void>
 
     if (task.logs.length > 0) {
       const latest = task.logs[task.logs.length - 1];
-      await prisma.taskLog.create({
-        data: {
+      await prisma.taskLog.upsert({
+        where: { id: latest.id },
+        create: {
           id: latest.id,
           taskId: task.id,
           level: latest.level,
           message: latest.message,
           timestamp: new Date(latest.timestamp),
         },
-      }).catch(() => {
-        // duplicate log id on repeated sync — safe to ignore
+        update: {
+          level: latest.level,
+          message: latest.message,
+          timestamp: new Date(latest.timestamp),
+        },
       });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn('[taskPersistence] 任务写入数据库跳过:', message);
+    console.warn('[taskPersistence] persist task skipped:', message);
   }
 }

@@ -1,7 +1,7 @@
-import { Alert, Button, Form, Input, Space, Spin, Typography, message } from "antd";
+import { Alert, Button, Form, Input, Space, Spin, Table, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { Product, ScriptStyle } from "@clipshop/shared";
+import type { CreativePlan, Product, ScriptStyle } from "@clipshop/shared";
 import { PlanGenerationProgress } from "../components/PlanGenerationProgress";
 import { StyleTemplateSelector } from "../components/StyleTemplateSelector";
 import { api } from "../services/api";
@@ -10,6 +10,7 @@ export function CreativePlanPage() {
   const { productId = "product_001" } = useParams();
   const navigate = useNavigate();
   const [product, setProduct] = useState<Product>();
+  const [plans, setPlans] = useState<CreativePlan[]>([]);
   const [style, setStyle] = useState<ScriptStyle>("pain_point");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -19,11 +20,11 @@ export function CreativePlanPage() {
     let alive = true;
     setLoading(true);
     setError(undefined);
-    api
-      .getProducts()
-      .then((items) => {
+    Promise.all([api.getProducts(), api.getCreativePlans(productId)])
+      .then(([items, nextPlans]) => {
         if (!alive) return;
         setProduct(items.find((item) => item.id === productId) ?? items[0]);
+        setPlans(nextPlans);
       })
       .catch((err) => {
         if (!alive) return;
@@ -45,6 +46,7 @@ export function CreativePlanPage() {
     try {
       const plan = await api.generateCreativePlan(product.id, { style, merchantAdCopy, maxDuration: 15 });
       message.success("CreativePlan 已生成");
+      setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)]);
       navigate(`/creative-plans/${plan.id}/review`);
     } catch (err) {
       const messageText = err instanceof Error ? err.message : "生成 CreativePlan 失败";
@@ -72,6 +74,29 @@ export function CreativePlanPage() {
       </section>
       {error ? <Alert type="error" showIcon message={error} /> : null}
       {generating ? <PlanGenerationProgress active={generating} /> : null}
+      <Table
+        className="surface"
+        rowKey="id"
+        pagination={false}
+        dataSource={plans}
+        columns={[
+          { title: "方案", dataIndex: "title", ellipsis: true },
+          {
+            title: "状态",
+            dataIndex: "status",
+            render: (status: CreativePlan["status"]) => <Tag color={status === "approved" ? "green" : "blue"}>{status}</Tag>,
+          },
+          { title: "分镜", dataIndex: "scenes", render: (scenes: CreativePlan["scenes"]) => scenes.length },
+          {
+            title: "操作",
+            render: (_: unknown, record: CreativePlan) => (
+              <Button type="link" onClick={() => navigate(`/creative-plans/${record.id}/review`)}>
+                继续审核
+              </Button>
+            ),
+          },
+        ]}
+      />
       <Form
         layout="vertical"
         className="surface generation-form"

@@ -121,6 +121,11 @@ export const api = {
     await wait();
     return creativePlans.find((plan) => plan.id === planId) ?? creativePlans[0];
   },
+  async getCreativePlans(productId: string): Promise<CreativePlan[]> {
+    if (!USE_MOCK) return request<CreativePlan[]>(`/products/${productId}/creative-plans`);
+    await wait();
+    return creativePlans.filter((plan) => plan.productId === productId);
+  },
   async updateCreativePlan(planId: string, input: Partial<CreativePlan>): Promise<CreativePlan> {
     if (!USE_MOCK) {
       return request<CreativePlan>(`/creative-plans/${planId}`, {
@@ -197,6 +202,11 @@ export const api = {
     if (!USE_MOCK) return request<GenerationTask>(`/tasks/${taskId}`);
     await wait();
     return generationTasks.find((task) => task.id === taskId) ?? generationTasks[0];
+  },
+  async getTasks(): Promise<GenerationTask[]> {
+    if (!USE_MOCK) return request<GenerationTask[]>("/tasks");
+    await wait();
+    return generationTasks;
   },
   async retryTask(taskId: string): Promise<GenerationTask> {
     if (!USE_MOCK) {

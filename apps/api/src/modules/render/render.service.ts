@@ -4,7 +4,7 @@ import { Seedance15Provider } from '../../providers/video/Seedance15Provider';
 import { FFmpegComposeProvider } from '../../providers/video/FFmpegComposeProvider';
 import { taskStore, planStore, taskMaterialsStore } from '../../memory-store';
 import { downloadVideoToOutputs } from '../../utils/videoDownload';
-import { loadTaskFromDatabase, persistTaskToDatabase } from './taskPersistence';
+import { listTasksFromDatabase, loadTaskFromDatabase, persistTaskToDatabase } from './taskPersistence';
 import type { GenerationTask, CreativePlan, Material, TaskLog } from '@shared/types';
 
 // Day 1 任务进度约定
@@ -274,6 +274,18 @@ export class RenderService {
       return fromDb;
     }
     return taskStore.get(taskId) ?? null;
+  }
+
+  async listTasks(limit = 20): Promise<GenerationTask[]> {
+    const fromDb = await listTasksFromDatabase(limit);
+    if (fromDb.length > 0) {
+      fromDb.forEach((task) => taskStore.set(task.id, task));
+      return fromDb;
+    }
+
+    return Array.from(taskStore.values())
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      .slice(0, limit);
   }
 
   // 重试失败任务 — 从 planStore 读取真实 CreativePlan
