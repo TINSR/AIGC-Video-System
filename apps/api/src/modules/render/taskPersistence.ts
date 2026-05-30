@@ -1,6 +1,14 @@
 import prisma from '../../config/prisma';
 import type { GenerationTask, TaskLog } from '@shared/types';
 
+const MAX_ERROR_MESSAGE_LENGTH = 190;
+
+function truncateErrorMessage(message?: string): string | null {
+  if (!message) return null;
+  if (message.length <= MAX_ERROR_MESSAGE_LENGTH) return message;
+  return `${message.slice(0, MAX_ERROR_MESSAGE_LENGTH - 3)}...`;
+}
+
 function mapDbTask(record: {
   id: string;
   productId: string;
@@ -87,7 +95,7 @@ export async function persistTaskToDatabase(task: GenerationTask): Promise<void>
         currentStep: task.currentStep,
         provider: task.provider,
         outputVideoUrl: task.outputVideoUrl ?? null,
-        errorMessage: task.errorMessage ?? null,
+        errorMessage: truncateErrorMessage(task.errorMessage),
         type: 'render',
       },
       update: {
@@ -96,7 +104,7 @@ export async function persistTaskToDatabase(task: GenerationTask): Promise<void>
         currentStep: task.currentStep,
         provider: task.provider,
         outputVideoUrl: task.outputVideoUrl ?? null,
-        errorMessage: task.errorMessage ?? null,
+        errorMessage: truncateErrorMessage(task.errorMessage),
         updatedAt: new Date(),
       },
     });

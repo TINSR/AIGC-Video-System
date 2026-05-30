@@ -121,7 +121,8 @@ export class RenderService {
       } else {
         task.progress = 25;
         task.currentStep = STEP_MAP[25];
-        task.logs.push(makeLog('info', `Seedance 任务已提交，ID：${seedanceResult.taskId}，开始轮询状态`));
+        task.currentStep = '已提交 Seedance 任务，等待远端生成';
+        task.logs.push(makeLog('info', `已提交 Seedance 任务，ID：${seedanceResult.taskId}`));
         task.updatedAt = new Date().toISOString();
         await syncTask(task);
 
@@ -145,25 +146,48 @@ export class RenderService {
   ): Promise<void> {
     const pollIntervalMs = Math.max(Number(process.env.SEEDANCE_POLL_INTERVAL_MS) || 5000, 1000);
     const maxWaitMs = Math.max(Number(process.env.SEEDANCE_POLL_TIMEOUT_MS) || 15 * 60 * 1000, pollIntervalMs);
+    const heartbeatIntervalMs = Math.max(Number(process.env.SEEDANCE_HEARTBEAT_INTERVAL_MS) || 30_000, 10_000);
     const startedAt = Date.now();
+    let lastHeartbeatAt = startedAt;
 
     while (Date.now() - startedAt < maxWaitMs) {
+      const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+      if (Date.now() - lastHeartbeatAt >= heartbeatIntervalMs) {
+        task.currentStep = `远端生成中，已等待 ${elapsedSec} 秒`;
+        task.logs.push(makeLog('info', task.currentStep));
+        task.updatedAt = new Date().toISOString();
+        await syncTask(task);
+        lastHeartbeatAt = Date.now();
+      }
+
       const status = await this.seedanceProvider.getTaskStatus(seedanceTaskId);
 
       if (status.status === 'success') {
         if (status.videoUrl) {
-          task.progress = 100;
-          task.status = 'success';
-          task.currentStep = STEP_MAP[100];
-          task.logs.push(makeLog('info', `Seedance 生成完成：${status.videoUrl}`));
+          task.currentStep = 'Seedance 返回成功，开始下载视频';
+          task.logs.push(makeLog('info', task.currentStep));
+          task.progress = Math.max(task.progress, 90);
+          task.updatedAt = new Date().toISOString();
+          await syncTask(task);
 
-          const localUrl = await downloadVideoToOutputs(status.videoUrl, task.id);
-          if (localUrl) {
-            task.outputVideoUrl = localUrl;
-            task.logs.push(makeLog('info', `远端视频已落盘：${localUrl}`));
+          const download = await downloadVideoToOutputs(status.videoUrl, task.id);
+          if (download.ok) {
+            task.progress = 100;
+            task.status = 'success';
+            task.outputVideoUrl = download.localUrl;
+            task.currentStep = STEP_MAP[100];
+            task.logs.push(
+              makeLog(
+                'info',
+                `视频已保存到 ${download.localUrl}（${download.bytes} bytes, ${download.contentType}）`
+              )
+            );
           } else {
+            task.progress = 100;
+            task.status = 'success';
             task.outputVideoUrl = status.videoUrl;
-            task.logs.push(makeLog('warn', '远端视频落盘失败，保留远端 URL'));
+            task.currentStep = '生成完成（使用远端视频 URL）';
+            task.logs.push(makeLog('warn', `远端视频落盘失败：${download.reason}，保留远端 URL`));
           }
 
           task.updatedAt = new Date().toISOString();
@@ -245,12 +269,16 @@ export class RenderService {
         outputPath,
       });
 
-      if (result.success) {
+      if (result.success && fs.existsSync(outputPath)) {
         task.progress = 100;
         task.status = 'success';
         task.outputVideoUrl = `/outputs/${task.id}.mp4`;
         task.currentStep = STEP_MAP[100];
         task.logs.push(makeLog('info', `FFmpeg 合成完成，输出：/outputs/${task.id}.mp4`));
+      } else if (result.success) {
+        task.status = 'failed';
+        task.errorMessage = 'FFmpeg 报告成功但本地输出文件不存在';
+        task.logs.push(makeLog('error', task.errorMessage));
       } else {
         task.status = 'failed';
         task.errorMessage = result.errorMessage || 'FFmpeg 合成失败';
