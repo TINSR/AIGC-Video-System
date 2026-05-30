@@ -1,9 +1,10 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
-import * as path from 'path';
 import { Seedance15Provider } from '../../providers/video/Seedance15Provider';
 import { FFmpegComposeProvider } from '../../providers/video/FFmpegComposeProvider';
 import { taskStore, planStore, taskMaterialsStore } from '../../memory-store';
+import { downloadVideoToOutputs } from '../../utils/videoDownload';
+import { loadTaskFromDatabase, persistTaskToDatabase } from './taskPersistence';
 import type { GenerationTask, CreativePlan, Material, TaskLog } from '@shared/types';
 
 // Day 1 任务进度约定
@@ -25,6 +26,11 @@ function makeLog(level: TaskLog['level'], message: string): TaskLog {
     message,
     timestamp: new Date().toISOString(),
   };
+}
+
+async function syncTask(task: GenerationTask): Promise<void> {
+  taskStore.set(task.id, task);
+  await persistTaskToDatabase(task);
 }
 
 export class RenderService {
@@ -58,19 +64,16 @@ export class RenderService {
       updatedAt: new Date().toISOString(),
     };
 
-    // 写入共享存储
-    taskStore.set(task.id, task);
-    // 保存素材快照供 retry 使用
+    await syncTask(task);
     taskMaterialsStore.set(task.id, materials);
 
-    // 异步执行渲染任务
-    this.executeRenderTask(task, creativePlan, materials).catch(error => {
+    this.executeRenderTask(task, creativePlan, materials).catch(async (error) => {
       console.error('渲染任务失败:', error);
       task.status = 'failed';
       task.errorMessage = error instanceof Error ? error.message : '渲染异常';
       task.logs.push(makeLog('error', `渲染异常：${task.errorMessage}`));
       task.updatedAt = new Date().toISOString();
-      taskStore.set(task.id, task);
+      await syncTask(task);
     });
 
     return task;
@@ -88,14 +91,14 @@ export class RenderService {
       task.currentStep = STEP_MAP[10];
       task.logs.push(makeLog('info', `读取 CreativePlan (${creativePlan.id})，共 ${creativePlan.scenes.length} 个分镜，${materials.length} 个素材`));
       task.updatedAt = new Date().toISOString();
-      taskStore.set(task.id, task);
+      await syncTask(task);
 
       task.progress = 25;
       task.currentStep = STEP_MAP[25];
       const hasKey = !!process.env.SEEDANCE_API_KEY;
       task.logs.push(makeLog('info', `构建 Seedance prompt（API Key ${hasKey ? '已配置' : '未配置'}）`));
       task.updatedAt = new Date().toISOString();
-      taskStore.set(task.id, task);
+      await syncTask(task);
 
       const seedanceResult = await this.seedanceProvider.render({
         creativePlanId: creativePlan.id,
@@ -112,7 +115,7 @@ export class RenderService {
         task.currentStep = 'Seedance 调用失败，切换到 FFmpeg 兜底合成';
         task.logs.push(makeLog('warn', `Seedance 失败：${seedanceResult.errorMessage}，切换到 FFmpeg 兜底`));
         task.updatedAt = new Date().toISOString();
-        taskStore.set(task.id, task);
+        await syncTask(task);
 
         await this.renderWithFFmpeg(task, creativePlan, materials);
       } else {
@@ -120,7 +123,7 @@ export class RenderService {
         task.currentStep = STEP_MAP[25];
         task.logs.push(makeLog('info', `Seedance 任务已提交，ID：${seedanceResult.taskId}，开始轮询状态`));
         task.updatedAt = new Date().toISOString();
-        taskStore.set(task.id, task);
+        await syncTask(task);
 
         await this.waitForSeedanceCompletion(task, seedanceResult.taskId, creativePlan, materials);
       }
@@ -129,7 +132,7 @@ export class RenderService {
       task.errorMessage = error instanceof Error ? error.message : '渲染失败';
       task.logs.push(makeLog('error', `渲染失败：${task.errorMessage}`));
       task.updatedAt = new Date().toISOString();
-      taskStore.set(task.id, task);
+      await syncTask(task);
     }
   }
 
@@ -149,15 +152,22 @@ export class RenderService {
 
       if (status.status === 'success') {
         if (status.videoUrl) {
-          // 尝试下载远端视频到本地 /outputs
-          const localUrl = await this.downloadRemoteVideo(status.videoUrl, task.id);
           task.progress = 100;
           task.status = 'success';
-          task.outputVideoUrl = localUrl || status.videoUrl;
           task.currentStep = STEP_MAP[100];
-          task.logs.push(makeLog('info', `Seedance 生成完成，视频：${task.outputVideoUrl}${localUrl ? '（已下载到本地）' : '（远端 URL）'}`));
+          task.logs.push(makeLog('info', `Seedance 生成完成：${status.videoUrl}`));
+
+          const localUrl = await downloadVideoToOutputs(status.videoUrl, task.id);
+          if (localUrl) {
+            task.outputVideoUrl = localUrl;
+            task.logs.push(makeLog('info', `远端视频已落盘：${localUrl}`));
+          } else {
+            task.outputVideoUrl = status.videoUrl;
+            task.logs.push(makeLog('warn', '远端视频落盘失败，保留远端 URL'));
+          }
+
           task.updatedAt = new Date().toISOString();
-          taskStore.set(task.id, task);
+          await syncTask(task);
           return;
         }
 
@@ -166,7 +176,7 @@ export class RenderService {
         task.currentStep = 'Seedance 生成完成但未返回视频 URL，切换到 FFmpeg 兜底合成';
         task.logs.push(makeLog('warn', 'Seedance 生成完成但未返回 videoUrl，切换到 FFmpeg 兜底'));
         task.updatedAt = new Date().toISOString();
-        taskStore.set(task.id, task);
+        await syncTask(task);
 
         await this.renderWithFFmpeg(task, creativePlan, materials);
         return;
@@ -176,7 +186,7 @@ export class RenderService {
         task.currentStep = 'Seedance 生成失败，切换到 FFmpeg 兜底合成';
         task.logs.push(makeLog('warn', `Seedance 生成失败：${status.errorMessage}，切换到 FFmpeg 兜底`));
         task.updatedAt = new Date().toISOString();
-        taskStore.set(task.id, task);
+        await syncTask(task);
 
         await this.renderWithFFmpeg(task, creativePlan, materials);
         return;
@@ -184,7 +194,7 @@ export class RenderService {
 
       task.progress = Math.max(task.progress, 25 + Math.floor((status.progress / 100) * 70));
       task.updatedAt = new Date().toISOString();
-      taskStore.set(task.id, task);
+      await syncTask(task);
 
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
     }
@@ -194,7 +204,7 @@ export class RenderService {
     task.currentStep = 'Seedance 生成超时，切换到 FFmpeg 兜底合成';
     task.logs.push(makeLog('warn', 'Seedance 生成超时，切换到 FFmpeg 兜底'));
     task.updatedAt = new Date().toISOString();
-    taskStore.set(task.id, task);
+    await syncTask(task);
 
     await this.renderWithFFmpeg(task, creativePlan, materials);
   }
@@ -213,7 +223,7 @@ export class RenderService {
         task.errorMessage = `FFmpeg 不可用：${ffmpegCheck.error}\n\n安装方法：\n1. winget install Gyan.FFmpeg\n2. 或下载 https://github.com/BtbN/FFmpeg-Builds/releases 并添加到 PATH\n3. 或设置环境变量 FFMPEG_PATH 指向 ffmpeg.exe 的完整路径`;
         task.logs.push(makeLog('error', task.errorMessage));
         task.updatedAt = new Date().toISOString();
-        taskStore.set(task.id, task);
+        await syncTask(task);
         return;
       }
 
@@ -221,7 +231,7 @@ export class RenderService {
       task.currentStep = STEP_MAP[40];
       task.logs.push(makeLog('info', `FFmpeg 可用（版本: ${ffmpegCheck.version}），开始合成 ${creativePlan.scenes.length} 个分镜`));
       task.updatedAt = new Date().toISOString();
-      taskStore.set(task.id, task);
+      await syncTask(task);
 
       const outputDir = process.env.OUTPUT_DIR || './outputs';
       if (!fs.existsSync(outputDir)) {
@@ -252,37 +262,17 @@ export class RenderService {
       task.logs.push(makeLog('error', `FFmpeg 合成失败：${task.errorMessage}`));
     } finally {
       task.updatedAt = new Date().toISOString();
-      taskStore.set(task.id, task);
+      await syncTask(task);
     }
   }
 
-  // 下载远端视频到本地 /outputs，返回本地 URL 或 null
-  private async downloadRemoteVideo(remoteUrl: string, taskId: string): Promise<string | null> {
-    try {
-      const outputDir = process.env.OUTPUT_DIR || './outputs';
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
-      }
-      const localPath = path.join(outputDir, `${taskId}.mp4`);
-
-      const response = await fetch(remoteUrl);
-      if (!response.ok) {
-        console.warn(`[RenderService] 下载远端视频失败: HTTP ${response.status}`);
-        return null;
-      }
-
-      const buffer = Buffer.from(await response.arrayBuffer());
-      fs.writeFileSync(localPath, buffer);
-      return `/outputs/${taskId}.mp4`;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[RenderService] 下载远端视频异常: ${message}`);
-      return null;
-    }
-  }
-
-  // 获取任务状态
+  // 获取任务状态 — 优先 MySQL，fallback 内存
   async getTaskStatus(taskId: string): Promise<GenerationTask | null> {
+    const fromDb = await loadTaskFromDatabase(taskId);
+    if (fromDb) {
+      taskStore.set(taskId, fromDb);
+      return fromDb;
+    }
     return taskStore.get(taskId) ?? null;
   }
 
@@ -310,15 +300,15 @@ export class RenderService {
     task.errorMessage = undefined;
     task.logs.push(makeLog('info', '任务重试中'));
     task.updatedAt = new Date().toISOString();
-    taskStore.set(task.id, task);
+    await syncTask(task);
 
-    this.executeRenderTask(task, creativePlan, materials).catch(error => {
+    this.executeRenderTask(task, creativePlan, materials).catch(async (error) => {
       console.error('重试任务失败:', error);
       task.status = 'failed';
       task.errorMessage = error instanceof Error ? error.message : '重试异常';
       task.logs.push(makeLog('error', `重试异常：${task.errorMessage}`));
       task.updatedAt = new Date().toISOString();
-      taskStore.set(task.id, task);
+      await syncTask(task);
     });
 
     return task;
