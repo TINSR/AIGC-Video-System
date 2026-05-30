@@ -1,6 +1,6 @@
 # Day 6 环境边界说明（后端）
 
-> 分支：`feature/day6-backend-env-smoke`  
+> 分支：`feature/day6-backend-env-smoke`
 > 结论日期：2026-05-30
 
 ## MySQL

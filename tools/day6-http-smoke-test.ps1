@@ -8,10 +8,10 @@ $results = @()
 function Record-Step($name, $script) {
   try {
     $out = & $script
-    $results += [pscustomobject]@{ Step = $name; Status = "OK"; Detail = ($out | Out-String).Trim() }
+    $script:results += [pscustomobject]@{ Step = $name; Status = "OK"; Detail = ($out | Out-String).Trim() }
     Write-Host "[OK] $name" -ForegroundColor Green
   } catch {
-    $results += [pscustomobject]@{ Step = $name; Status = "FAIL"; Detail = $_.Exception.Message }
+    $script:results += [pscustomobject]@{ Step = $name; Status = "FAIL"; Detail = $_.Exception.Message }
     Write-Host "[FAIL] $name — $($_.Exception.Message)" -ForegroundColor Red
   }
 }
