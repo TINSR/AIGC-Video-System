@@ -2,6 +2,8 @@ import type { CreativePlanInput, CreativePlanDraft, SceneDraft } from '@shared/t
 import type { Product, Material, VisualBible, ScriptStyle, AgentTrace, SceneGoal, CreativeStrategy, MaterialUsage } from '@shared/types';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
 
+// ─── Pipeline Context ────────────────────────────────────────────
+
 interface PipelineContext {
   product: Product;
   materials: Material[];
@@ -11,12 +13,15 @@ interface PipelineContext {
   trace: AgentTrace[];
 }
 
+// ─── Agent Output Types ──────────────────────────────────────────
+
 interface ProductAnalysis {
   category: string;
   targetUsers: string;
   painPoints: string;
   sellingPoints: string[];
   constraints: string[];
+  materialSummary: string[];
 }
 
 interface PipelineStrategy {
@@ -27,6 +32,27 @@ interface PipelineStrategy {
   styleDirection: string;
   sceneCount: number;
 }
+
+interface ScriptOutput {
+  title: string;
+  hook: string;
+  adCopy: string;
+  cta: string;
+  voiceoverStyle: string;
+}
+
+interface ScenePlan {
+  goal: SceneGoal;
+  duration: number;
+  visualDescription: string;
+  subtitle: string;
+  voiceover: string;
+  materialId?: string;
+  materialUsage: MaterialUsage;
+  transition: 'cut' | 'fade' | 'zoom';
+}
+
+// ─── Constants ───────────────────────────────────────────────────
 
 const SCENE_GOALS_4: SceneGoal[] = ['hook', 'feature', 'proof', 'cta'];
 const SCENE_GOALS_3: SceneGoal[] = ['hook', 'feature', 'cta'];
@@ -41,6 +67,17 @@ function getSceneGoals(count: number): SceneGoal[] {
 }
 
 function now() { return Date.now(); }
+
+function summarizeMaterials(materials: Material[]): string[] {
+  return materials.map(m => {
+    const type = m.type === 'video' ? '视频' : '图片';
+    const desc = m.aiDescription || m.title;
+    const tags = m.tags.length > 0 ? `[${m.tags.join(',')}]` : '';
+    return `${type}: ${desc} ${tags}`.trim();
+  });
+}
+
+// ─── Pipeline ────────────────────────────────────────────────────
 
 export class CreativePlanPipeline {
   private mockProvider: MockAiProvider;
@@ -60,34 +97,28 @@ export class CreativePlanPipeline {
     };
 
     try {
-      // Stage 1: Product Analyst
-      const analysis = this.analyzeProduct(ctx);
+      // Stage 1: ProductAnalystAgent
+      const analysis = this.productAnalystAgent(ctx);
 
-      // Stage 2: Creative Strategy
-      const strategy = this.createStrategy(ctx, analysis);
+      // Stage 2: CreativeStrategyAgent
+      const strategy = this.creativeStrategyAgent(ctx, analysis);
 
-      // Stage 3: Visual Bible
-      const visualBible = this.createVisualBible(ctx, analysis);
+      // Stage 3: VisualBibleAgent
+      const visualBible = this.visualBibleAgent(ctx, analysis);
 
-      // Stage 4+5: Script & Storyboard — delegate to MockAiProvider
-      const start = now();
-      const draft = await this.mockProvider.generateCreativePlan(input);
-      ctx.trace.push({
-        agent: 'Script & Storyboard',
-        status: 'success',
-        summary: `生成 ${draft.scenes.length} 个分镜，总时长 ${draft.scenes.reduce((s, sc) => s + sc.duration, 0)} 秒`,
-        durationMs: now() - start,
-      });
+      // Stage 4: ScriptAgent
+      const script = this.scriptAgent(ctx, analysis, strategy);
 
-      // Stage 6: Sync pipeline VisualBible to draft, then inject into prompts
-      draft.visualBible = visualBible;
-      this.injectVisualBibleIntoPrompts(draft, visualBible);
+      // Stage 5: StoryboardAgent
+      const scenes = this.storyboardAgent(ctx, strategy, script, visualBible);
 
-      // Stage 7: Assign scene goals and materialUsage
-      this.assignSceneGoals(draft);
-      this.assignMaterialUsage(draft, input.materials);
+      // Stage 6: SeedancePromptAgent — generate prompt for each scene
+      this.seedancePromptAgent(ctx, scenes, visualBible);
 
-      // Stage 8: Build CreativeStrategy for output
+      // Stage 7: RevisionAgent — one-pass fix
+      this.revisionAgent(scenes, ctx);
+
+      // Stage 8: Build output
       const creativeStrategy: CreativeStrategy = {
         videoGoal: strategy.videoGoal,
         targetAudience: strategy.targetAudience,
@@ -97,21 +128,22 @@ export class CreativePlanPipeline {
         recommendedSceneCount: strategy.sceneCount,
       };
 
-      // Stage 9: Compliance (reuse existing — run in CreativePlanService)
-      ctx.trace.push({
-        agent: 'Compliance',
-        status: 'success',
-        summary: '合规检查将在 CreativePlanService 中执行',
-      });
+      const draft: CreativePlanDraft & { agentTrace?: AgentTrace[]; creativeStrategy?: CreativeStrategy } = {
+        productId: ctx.product.id,
+        style: ctx.style as ScriptStyle,
+        title: script.title,
+        hook: script.hook,
+        adCopy: script.adCopy,
+        cta: script.cta,
+        visualBible,
+        scenes,
+        complianceWarnings: [],
+        continuityWarnings: [],
+        creativeStrategy,
+        agentTrace: ctx.trace,
+      };
 
-      // Stage 10: Continuity (reuse existing — run in CreativePlanService)
-      ctx.trace.push({
-        agent: 'Continuity',
-        status: 'success',
-        summary: '连贯性检查将在 CreativePlanService 中执行',
-      });
-
-      return { ...draft, creativeStrategy, agentTrace: ctx.trace };
+      return draft;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.trace.push({
@@ -120,7 +152,7 @@ export class CreativePlanPipeline {
         summary: `Pipeline 失败：${message}，fallback 到 MockAiProvider`,
       });
 
-      // Fallback to MockAiProvider directly
+      // Ultimate fallback
       const draft = await this.mockProvider.generateCreativePlan(input);
       this.injectVisualBibleIntoPrompts(draft, draft.visualBible);
       this.assignSceneGoals(draft);
@@ -129,10 +161,11 @@ export class CreativePlanPipeline {
     }
   }
 
-  // Stage 1: Product Analyst — extract structured info from product
-  private analyzeProduct(ctx: PipelineContext): ProductAnalysis {
+  // ─── Stage 1: ProductAnalystAgent ────────────────────────────
+
+  private productAnalystAgent(ctx: PipelineContext): ProductAnalysis {
     const start = now();
-    const { product } = ctx;
+    const { product, materials } = ctx;
 
     const analysis: ProductAnalysis = {
       category: product.category,
@@ -140,42 +173,50 @@ export class CreativePlanPipeline {
       painPoints: product.usageScene,
       sellingPoints: product.sellingPoints,
       constraints: ['总时长不超过15秒', '竖屏9:16', '商品始终可见'],
+      materialSummary: summarizeMaterials(materials),
     };
 
+    const materialInfo = materials.length > 0
+      ? `，${materials.length} 个素材（${materials.filter(m => m.type === 'image').length} 图片/${materials.filter(m => m.type === 'video').length} 视频）`
+      : '，无素材';
+
     ctx.trace.push({
-      agent: 'Product Analyst',
+      agent: 'ProductAnalystAgent',
       status: 'success',
-      summary: `识别目标用户为${product.targetAudience}，核心卖点：${product.sellingPoints.slice(0, 2).join('、')}`,
+      summary: `识别品类"${product.category}"，目标用户"${product.targetAudience}"，核心卖点：${product.sellingPoints.slice(0, 3).join('、')}${materialInfo}`,
       durationMs: now() - start,
     });
 
     return analysis;
   }
 
-  // Stage 2: Creative Strategy
-  private createStrategy(ctx: PipelineContext, analysis: ProductAnalysis): PipelineStrategy {
+  // ─── Stage 2: CreativeStrategyAgent ──────────────────────────
+
+  private creativeStrategyAgent(ctx: PipelineContext, analysis: ProductAnalysis): PipelineStrategy {
     const start = now();
+
     const strategy: PipelineStrategy = {
-      videoGoal: `展示${ctx.product.title}的核心卖点，引导用户购买`,
+      videoGoal: `展示${ctx.product.title}的核心卖点，引导${analysis.targetUsers}购买`,
       targetAudience: analysis.targetUsers,
       sellingPointOrder: analysis.sellingPoints,
       emotionalArc: '痛点引入 -> 解决方案 -> 效果展示 -> 促单转化',
       styleDirection: ctx.style as string,
-      sceneCount: ctx.sceneCount,
+      sceneCount: Math.min(4, Math.max(1, analysis.sellingPoints.length + 1)),
     };
 
     ctx.trace.push({
-      agent: 'Creative Strategy',
+      agent: 'CreativeStrategyAgent',
       status: 'success',
-      summary: `策略：${strategy.emotionalArc}，推荐 ${strategy.sceneCount} 个分镜`,
+      summary: `策略：${strategy.emotionalArc}，推荐 ${strategy.sceneCount} 个分镜，卖点顺序：${strategy.sellingPointOrder.join(' > ')}`,
       durationMs: now() - start,
     });
 
     return strategy;
   }
 
-  // Stage 3: Visual Bible — ensure consistent visual settings
-  private createVisualBible(ctx: PipelineContext, analysis: ProductAnalysis): VisualBible {
+  // ─── Stage 3: VisualBibleAgent ───────────────────────────────
+
+  private visualBibleAgent(ctx: PipelineContext, analysis: ProductAnalysis): VisualBible {
     const start = now();
 
     const visualBible: VisualBible = {
@@ -184,26 +225,258 @@ export class CreativePlanPipeline {
       colorTone: '明亮清爽',
       lighting: '柔和日光',
       cameraStyle: '手持近景 + 商品特写',
-      productAppearance: `${ctx.product.title}`,
+      productAppearance: ctx.product.title,
       mainScenes: [analysis.painPoints, '居家使用', '户外场景'],
       continuityRules: [
         '每个分镜保持同一商品外观',
         '整体色调保持一致',
         '商品始终清晰可见',
+        '禁止改变商品颜色、形状、材质',
       ],
     };
 
     ctx.trace.push({
-      agent: 'Visual Bible',
+      agent: 'VisualBibleAgent',
       status: 'success',
-      summary: `视觉风格已锁定：${visualBible.style}，色调：${visualBible.colorTone}`,
+      summary: `视觉风格已锁定：${visualBible.style}，色调：${visualBible.colorTone}，镜头：${visualBible.cameraStyle}`,
       durationMs: now() - start,
     });
 
     return visualBible;
   }
 
-  // Stage 6: Inject VisualBible into each scene's seedancePrompt
+  // ─── Stage 4: ScriptAgent ────────────────────────────────────
+
+  private scriptAgent(ctx: PipelineContext, analysis: ProductAnalysis, strategy: PipelineStrategy): ScriptOutput {
+    const start = now();
+    const { product } = ctx;
+
+    const hook = `你是不是还在为${analysis.painPoints}烦恼？`;
+    const title = `${product.title} - ${analysis.sellingPoints[0] || '品质之选'}`;
+    const adCopy = `这款${product.title}，${analysis.sellingPoints.join('，')}，专为${analysis.targetUsers}设计，让你的生活更便捷！`;
+    const cta = '现在下单享专属优惠，点击下方小黄车带走吧！';
+
+    const script: ScriptOutput = {
+      title,
+      hook,
+      adCopy,
+      cta,
+      voiceoverStyle: '亲切推荐、节奏紧凑',
+    };
+
+    ctx.trace.push({
+      agent: 'ScriptAgent',
+      status: 'success',
+      summary: `标题"${title}"，hook "${hook}"，CTA "${cta}"`,
+      durationMs: now() - start,
+    });
+
+    return script;
+  }
+
+  // ─── Stage 5: StoryboardAgent ────────────────────────────────
+
+  private storyboardAgent(
+    ctx: PipelineContext,
+    strategy: PipelineStrategy,
+    script: ScriptOutput,
+    visualBible: VisualBible,
+  ): SceneDraft[] {
+    const start = now();
+    const { product, materials } = ctx;
+    const goals = getSceneGoals(strategy.sceneCount);
+    const imageMaterials = materials.filter(m => m.type === 'image');
+    const videoMaterials = materials.filter(m => m.type === 'video');
+
+    const sceneTemplates = [
+      {
+        goal: 'hook' as SceneGoal,
+        visualDescription: `${strategy.targetAudience}在${product.usageScene}遇到麻烦，表情困扰`,
+        subtitle: script.hook.replace('？', '？'),
+        voiceover: script.hook,
+        transition: 'cut' as const,
+        duration: 3,
+      },
+      {
+        goal: 'feature' as SceneGoal,
+        visualDescription: `用户使用${product.title}，轻松解决问题，展示核心功能`,
+        subtitle: `${product.sellingPoints[0] || '轻松解决'}`,
+        voiceover: `直到我发现了这款${product.title}，${product.sellingPoints[0]}，使用起来特别方便`,
+        transition: 'fade' as const,
+        duration: 4,
+      },
+      {
+        goal: 'proof' as SceneGoal,
+        visualDescription: `产品功能细节展示，${product.sellingPoints.slice(1).join('、')}，突出核心卖点`,
+        subtitle: `${product.sellingPoints.slice(1).join('，')}`,
+        voiceover: `${product.sellingPoints.slice(1).join('，')}，特别适合${strategy.targetAudience}使用`,
+        transition: 'fade' as const,
+        duration: 4,
+      },
+      {
+        goal: 'cta' as SceneGoal,
+        visualDescription: `产品展示，优惠信息，购物引导`,
+        subtitle: script.cta.replace('点击下方小黄车带走吧！', '现在下单享专属优惠'),
+        voiceover: script.cta,
+        transition: 'zoom' as const,
+        duration: 4,
+      },
+    ];
+
+    const scenes: SceneDraft[] = [];
+    for (let i = 0; i < strategy.sceneCount; i++) {
+      const tmpl = sceneTemplates[i] || sceneTemplates[sceneTemplates.length - 1];
+      const materialId = this.pickMaterialForScene(i, imageMaterials, videoMaterials);
+      const materialUsage = this.resolveMaterialUsage(materialId, materials);
+
+      scenes.push({
+        order: i + 1,
+        duration: tmpl.duration,
+        visualDescription: tmpl.visualDescription,
+        subtitle: tmpl.subtitle,
+        voiceover: tmpl.voiceover,
+        seedancePrompt: '', // will be filled by SeedancePromptAgent
+        materialId,
+        materialUsage,
+        goal: tmpl.goal,
+        warnings: [],
+        transition: tmpl.transition,
+      });
+    }
+
+    ctx.trace.push({
+      agent: 'StoryboardAgent',
+      status: 'success',
+      summary: `生成 ${scenes.length} 个分镜，总时长 ${scenes.reduce((s, sc) => s + sc.duration, 0)} 秒，结构为 ${scenes.map(s => s.goal).join('-')}`,
+      durationMs: now() - start,
+    });
+
+    return scenes;
+  }
+
+  // ─── Stage 6: SeedancePromptAgent ────────────────────────────
+
+  private seedancePromptAgent(ctx: PipelineContext, scenes: SceneDraft[], visualBible: VisualBible): void {
+    const start = now();
+
+    for (const scene of scenes) {
+      const goalLabel = {
+        hook: '开场吸引',
+        feature: '功能展示',
+        proof: '效果证明',
+        cta: '促单转化',
+        full_demo: '完整演示',
+      }[scene.goal || 'full_demo'];
+
+      const parts = [
+        `[商品外观: ${visualBible.productAppearance}]`,
+        `[风格: ${visualBible.style}]`,
+        `[色调: ${visualBible.colorTone}]`,
+        `[镜头: ${visualBible.cameraStyle}]`,
+        `[分镜目标: ${goalLabel}]`,
+        scene.visualDescription,
+        `字幕：${scene.subtitle}`,
+        `旁白：${scene.voiceover}`,
+        `[连贯规则: ${visualBible.continuityRules.join('; ')}]`,
+        '[禁止改变商品颜色、形状、核心卖点]',
+      ];
+
+      // Inject material info if available
+      if (scene.materialUsage === 'source_clip') {
+        parts.push('[素材：使用提供的视频素材作为参考]');
+      } else if (scene.materialUsage === 'reference_image') {
+        parts.push('[素材：使用提供的图片作为商品外观参考]');
+      }
+
+      scene.seedancePrompt = parts.join(' ');
+    }
+
+    ctx.trace.push({
+      agent: 'SeedancePromptAgent',
+      status: 'success',
+      summary: `为 ${scenes.length} 个分镜生成 Seedance prompt，均注入 VisualBible 和商品一致性规则`,
+      durationMs: now() - start,
+    });
+  }
+
+  // ─── Stage 7: RevisionAgent ──────────────────────────────────
+
+  private revisionAgent(scenes: SceneDraft[], ctx: PipelineContext): void {
+    const start = now();
+    const fixes: string[] = [];
+
+    // Fix 1: Ensure total duration <= maxDuration
+    let totalDuration = scenes.reduce((s, sc) => s + sc.duration, 0);
+    if (totalDuration > ctx.maxDuration) {
+      const excess = totalDuration - ctx.maxDuration;
+      // Trim from the last scene first
+      for (let i = scenes.length - 1; i >= 0 && excess > 0; i--) {
+        const reducible = Math.min(scenes[i].duration - 1, excess);
+        if (reducible > 0) {
+          scenes[i].duration -= reducible;
+          totalDuration -= reducible;
+        }
+      }
+      fixes.push(`总时长从 ${totalDuration + excess}s 修正为 ${totalDuration}s`);
+    }
+
+    // Fix 2: Ensure each scene has a goal
+    const goals = getSceneGoals(scenes.length);
+    for (let i = 0; i < scenes.length; i++) {
+      if (!scenes[i].goal) {
+        (scenes[i] as any).goal = goals[i] || 'cta';
+        fixes.push(`分镜${i + 1} 补齐 goal`);
+      }
+    }
+
+    // Fix 3: Ensure each scene has transition
+    for (let i = 0; i < scenes.length; i++) {
+      if (!scenes[i].transition) {
+        (scenes[i] as any).transition = i === 0 ? 'cut' : 'fade';
+        fixes.push(`分镜${i + 1} 补齐 transition`);
+      }
+    }
+
+    // Fix 4: Ensure seedancePrompt is non-empty
+    for (let i = 0; i < scenes.length; i++) {
+      if (!scenes[i].seedancePrompt || scenes[i].seedancePrompt.trim().length === 0) {
+        scenes[i].seedancePrompt = `${scenes[i].visualDescription}，${scenes[i].subtitle}，9:16竖屏`;
+        fixes.push(`分镜${i + 1} 补齐 seedancePrompt`);
+      }
+    }
+
+    ctx.trace.push({
+      agent: 'RevisionAgent',
+      status: fixes.length > 0 ? 'warning' : 'success',
+      summary: fixes.length > 0 ? `修正 ${fixes.length} 项：${fixes.join('；')}` : '无需修正，分镜方案通过',
+      durationMs: now() - start,
+      warnings: fixes.length > 0 ? fixes : undefined,
+    });
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────
+
+  private pickMaterialForScene(
+    sceneIndex: number,
+    imageMaterials: Material[],
+    videoMaterials: Material[],
+  ): string | undefined {
+    if (sceneIndex === 0 && videoMaterials.length > 0) return videoMaterials[0].id;
+    if (sceneIndex === 1 && videoMaterials.length > 1) return videoMaterials[1].id;
+    if (imageMaterials.length > sceneIndex) return imageMaterials[sceneIndex].id;
+    if (imageMaterials.length > 0) return imageMaterials[0].id;
+    if (videoMaterials.length > 0) return videoMaterials[0].id;
+    return undefined;
+  }
+
+  private resolveMaterialUsage(materialId: string | null | undefined, materials: Material[]): MaterialUsage {
+    if (materialId) {
+      const mat = materials.find(m => m.id === materialId);
+      return mat?.type === 'video' ? 'source_clip' : 'reference_image';
+    }
+    return materials.length > 0 ? 'reference_image' : 'prompt_only';
+  }
+
   private injectVisualBibleIntoPrompts(draft: CreativePlanDraft, vb: VisualBible): void {
     for (const scene of draft.scenes) {
       const vbPrefix = [
@@ -220,7 +493,6 @@ export class CreativePlanPipeline {
     }
   }
 
-  // Stage 7: Assign scene goals based on scene count
   private assignSceneGoals(draft: CreativePlanDraft): void {
     const goals = getSceneGoals(draft.scenes.length);
     for (let i = 0; i < draft.scenes.length; i++) {
@@ -228,20 +500,9 @@ export class CreativePlanPipeline {
     }
   }
 
-  // Assign materialUsage based on material type and scene position
   private assignMaterialUsage(draft: CreativePlanDraft, materials: Material[]): void {
-    const hasVideo = materials.some(m => m.type === 'video');
-    const hasImage = materials.some(m => m.type === 'image');
-
     for (const scene of draft.scenes) {
-      if (scene.materialId) {
-        const mat = materials.find(m => m.id === scene.materialId);
-        (scene as any).materialUsage = mat?.type === 'video' ? 'source_clip' : 'reference_image';
-      } else if (hasVideo || hasImage) {
-        (scene as any).materialUsage = 'reference_image';
-      } else {
-        (scene as any).materialUsage = 'prompt_only';
-      }
+      (scene as any).materialUsage = this.resolveMaterialUsage(scene.materialId, materials);
     }
   }
 }

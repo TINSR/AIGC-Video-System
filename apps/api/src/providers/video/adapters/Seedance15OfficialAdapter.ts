@@ -135,6 +135,17 @@ export class Seedance15OfficialAdapter {
       `适用场景：${vb.mainScenes.join('、')}`,
     ].join('\n');
 
+    // 素材信息段
+    const materialLines = input.materials.map(m => {
+      const type = m.type === 'video' ? '视频素材' : '图片素材';
+      const desc = m.aiDescription || m.title;
+      const tags = m.tags.length > 0 ? `标签：${m.tags.join(',')}` : '';
+      return `- ${type}：${desc}${tags ? `，${tags}` : ''}`;
+    });
+    const materialSection = materialLines.length > 0
+      ? `【可用素材】\n${materialLines.join('\n')}`
+      : '';
+
     // 全局视觉设定段
     const visualSection = [
       '【全局视觉设定】',
@@ -174,7 +185,8 @@ export class Seedance15OfficialAdapter {
       '- 总时长不超过 15 秒',
     ].join('\n');
 
-    return [productSection, visualSection, sceneSection, requirements].join('\n\n');
+    const sections = [productSection, materialSection, visualSection, sceneSection, requirements].filter(Boolean);
+    return sections.join('\n\n');
   }
 
   private clampDuration(duration: number): number {
