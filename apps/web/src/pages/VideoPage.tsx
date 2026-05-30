@@ -1,6 +1,6 @@
-import { Alert, Col, Descriptions, Row, Space, Spin, Tag, Typography } from "antd";
+import { Alert, Button, Col, Descriptions, Row, Space, Spin, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import type { GenerationTask } from "@clipshop/shared";
 import { AnalyticsMetricCard } from "../components/AnalyticsMetricCard";
 import { VideoPreviewPlayer } from "../components/VideoPreviewPlayer";
@@ -48,6 +48,16 @@ export function VideoPage() {
             任务成功后可直接预览 mp4，也可以打开后端输出链接或下载保存。
           </Typography.Paragraph>
         </div>
+        <Space wrap>
+          <Link to="/">
+            <Button>返回工作台</Button>
+          </Link>
+          {task ? (
+            <Link to={`/tasks/${task.id}`}>
+              <Button>返回任务页</Button>
+            </Link>
+          ) : null}
+        </Space>
       </section>
       {error ? <Alert type="error" showIcon message={error} /> : null}
       {task?.status === "failed" ? (

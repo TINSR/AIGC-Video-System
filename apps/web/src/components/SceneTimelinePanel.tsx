@@ -76,62 +76,62 @@ export function SceneTimelinePanel({
 
           return (
             <article className="timeline-scene" key={scene.id}>
-            <div className="timeline-scene-header">
-              <Space wrap>
-                <Tag color="purple">Scene {index + 1}</Tag>
-                {scene.goal ? <Tag color="geekblue">goal: {scene.goal}</Tag> : null}
-                {scene.materialUsage ? <Tag color="cyan">material: {scene.materialUsage}</Tag> : null}
-                {scene.renderStatus ? (
-                  <Tag color={scene.renderStatus === "failed" ? "red" : "blue"}>{scene.renderStatus}</Tag>
-                ) : null}
-                <Tag>{scene.duration}s</Tag>
-                <Tag>{scene.transition}</Tag>
-                {scene.warnings.length > 0 ? (
-                  <Tag color="warning" icon={<WarningOutlined />}>
-                    需检查
-                  </Tag>
-                ) : null}
-              </Space>
-              <Space.Compact>
-                <Tooltip title="上移">
-                  <Button
-                    aria-label={`Move scene ${index + 1} up`}
-                    icon={<ArrowUpOutlined />}
-                    disabled={index === 0 || saving}
-                    onClick={() => onMove(scene.id, "up")}
-                  />
-                </Tooltip>
-                <Tooltip title="下移">
-                  <Button
-                    aria-label={`Move scene ${index + 1} down`}
-                    icon={<ArrowDownOutlined />}
-                    disabled={index === scenes.length - 1 || saving}
-                    onClick={() => onMove(scene.id, "down")}
-                  />
-                </Tooltip>
-              </Space.Compact>
-            </div>
+              <div className="timeline-scene-header">
+                <Space wrap>
+                  <Tag color="purple">Scene {index + 1}</Tag>
+                  {scene.goal ? <Tag color="geekblue">goal: {scene.goal}</Tag> : null}
+                  {scene.materialUsage ? <Tag color="cyan">material: {scene.materialUsage}</Tag> : null}
+                  {scene.renderStatus ? (
+                    <Tag color={scene.renderStatus === "failed" ? "red" : "blue"}>{scene.renderStatus}</Tag>
+                  ) : null}
+                  <Tag>{scene.duration}s</Tag>
+                  <Tag>{scene.transition}</Tag>
+                  {scene.warnings.length > 0 ? (
+                    <Tag color="warning" icon={<WarningOutlined />}>
+                      需检查
+                    </Tag>
+                  ) : null}
+                </Space>
+                <Space.Compact>
+                  <Tooltip title="上移">
+                    <Button
+                      aria-label={`Move scene ${index + 1} up`}
+                      icon={<ArrowUpOutlined />}
+                      disabled={index === 0 || saving}
+                      onClick={() => onMove(scene.id, "up")}
+                    />
+                  </Tooltip>
+                  <Tooltip title="下移">
+                    <Button
+                      aria-label={`Move scene ${index + 1} down`}
+                      icon={<ArrowDownOutlined />}
+                      disabled={index === scenes.length - 1 || saving}
+                      onClick={() => onMove(scene.id, "down")}
+                    />
+                  </Tooltip>
+                </Space.Compact>
+              </div>
 
-            <div className="timeline-form-grid">
-              <label>
-                <span>Duration</span>
-                <InputNumber
-                  min={1}
-                  max={15}
-                  value={scene.duration}
-                  addonAfter="s"
-                  onChange={(value) => onChange(scene.id, { duration: Number(value ?? 1) })}
-                />
-              </label>
-              <label>
-                <span>Transition</span>
-                <Select
-                  value={scene.transition}
-                  options={transitionOptions}
-                  onChange={(transition) => onChange(scene.id, { transition })}
-                />
-              </label>
-            </div>
+              <div className="timeline-form-grid">
+                <label>
+                  <span>Duration</span>
+                  <InputNumber
+                    min={1}
+                    max={15}
+                    value={scene.duration}
+                    addonAfter="s"
+                    onChange={(value) => onChange(scene.id, { duration: Number(value ?? 1) })}
+                  />
+                </label>
+                <label>
+                  <span>Transition</span>
+                  <Select
+                    value={scene.transition}
+                    options={transitionOptions}
+                    onChange={(transition) => onChange(scene.id, { transition })}
+                  />
+                </label>
+              </div>
 
             <label className="timeline-field">
               <span>Subtitle</span>
