@@ -2,12 +2,15 @@ import {
   ArrowDownOutlined,
   ArrowUpOutlined,
   ClockCircleOutlined,
+  LinkOutlined,
+  PlayCircleOutlined,
   ReloadOutlined,
   SaveOutlined,
   WarningOutlined
 } from "@ant-design/icons";
 import { Alert, Button, Input, InputNumber, Select, Space, Tag, Tooltip, Typography } from "antd";
 import type { Scene } from "@clipshop/shared";
+import { resolveAssetUrl } from "../services/api";
 
 type ScenePatch = Partial<Pick<Scene, "duration" | "transition" | "subtitle" | "voiceover" | "seedancePrompt">>;
 
@@ -68,13 +71,19 @@ export function SceneTimelinePanel({
       ) : null}
 
       <div className="timeline-track" aria-label="Scene timeline">
-        {scenes.map((scene, index) => (
-          <article className="timeline-scene" key={scene.id}>
+        {scenes.map((scene, index) => {
+          const scenePreviewUrl = resolveAssetUrl(scene.previewVideoUrl ?? undefined);
+
+          return (
+            <article className="timeline-scene" key={scene.id}>
             <div className="timeline-scene-header">
               <Space wrap>
                 <Tag color="purple">Scene {index + 1}</Tag>
                 {scene.goal ? <Tag color="geekblue">goal: {scene.goal}</Tag> : null}
                 {scene.materialUsage ? <Tag color="cyan">material: {scene.materialUsage}</Tag> : null}
+                {scene.renderStatus ? (
+                  <Tag color={scene.renderStatus === "failed" ? "red" : "blue"}>{scene.renderStatus}</Tag>
+                ) : null}
                 <Tag>{scene.duration}s</Tag>
                 <Tag>{scene.transition}</Tag>
                 {scene.warnings.length > 0 ? (
@@ -160,15 +169,29 @@ export function SceneTimelinePanel({
               </div>
             ) : null}
 
-            <Button
-              icon={<ReloadOutlined />}
-              loading={regeneratingSceneId === scene.id}
-              onClick={() => onRegenerate(scene.id)}
-            >
-              重新生成文案/提示词
-            </Button>
-          </article>
-        ))}
+            <Space wrap>
+              <Button
+                icon={<ReloadOutlined />}
+                loading={regeneratingSceneId === scene.id}
+                onClick={() => onRegenerate(scene.id)}
+              >
+                重新生成文案/提示词
+              </Button>
+              {scenePreviewUrl ? (
+                <Button icon={<LinkOutlined />} href={scenePreviewUrl} target="_blank">
+                  查看分镜预览
+                </Button>
+              ) : (
+                <Tooltip title="后端暂未提供 POST /api/creative-plans/:id/scenes/:sceneId/render，前端先保留入口。">
+                  <Button icon={<PlayCircleOutlined />} disabled>
+                    生成分镜预览
+                  </Button>
+                </Tooltip>
+              )}
+            </Space>
+            </article>
+          );
+        })}
       </div>
     </section>
   );

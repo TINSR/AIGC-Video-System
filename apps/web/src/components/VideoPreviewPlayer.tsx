@@ -1,5 +1,6 @@
 import { DownloadOutlined, LinkOutlined } from "@ant-design/icons";
-import { Button, Empty, Space, Typography } from "antd";
+import { useEffect, useState } from "react";
+import { Alert, Button, Empty, Space, Typography } from "antd";
 import { resolveAssetUrl } from "../services/api";
 
 type Props = {
@@ -8,13 +9,29 @@ type Props = {
 
 export function VideoPreviewPlayer({ videoUrl }: Props) {
   const resolvedUrl = resolveAssetUrl(videoUrl);
+  const [hasPlaybackError, setHasPlaybackError] = useState(false);
+
+  useEffect(() => {
+    setHasPlaybackError(false);
+  }, [resolvedUrl]);
 
   return (
     <div className="video-preview surface">
-      {resolvedUrl ? (
-        <video controls poster="https://images.unsplash.com/photo-1611532736597-de2d4265fba3?auto=format&fit=crop&w=900&q=80">
+      {resolvedUrl && !hasPlaybackError ? (
+        <video
+          controls
+          poster="https://images.unsplash.com/photo-1611532736597-de2d4265fba3?auto=format&fit=crop&w=900&q=80"
+          onError={() => setHasPlaybackError(true)}
+        >
           <source src={resolvedUrl} type="video/mp4" />
         </video>
+      ) : resolvedUrl ? (
+        <Alert
+          showIcon
+          type="warning"
+          message="视频预览加载失败"
+          description="可以先使用打开视频或下载成片确认资源；如果仍无法访问，请检查后端静态资源、远程 Seedance URL 或 /outputs 路径配置。"
+        />
       ) : (
         <Empty description="暂无成片，任务成功后将在这里预览 mp4。" />
       )}
