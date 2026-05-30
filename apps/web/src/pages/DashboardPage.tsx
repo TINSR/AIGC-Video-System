@@ -2,10 +2,11 @@ import { ArrowRightOutlined, PlusOutlined } from "@ant-design/icons";
 import { Alert, Button, Col, Row, Space, Spin, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { CreativePlan, GenerationTask, Product } from "@clipshop/shared";
+import type { CreativePlan, GenerationTask, Material, Product } from "@clipshop/shared";
 import { api } from "../services/api";
 
 type PlanMap = Record<string, CreativePlan[]>;
+type MaterialMap = Record<string, Material[]>;
 
 function taskStatusColor(status: GenerationTask["status"]) {
   if (status === "success") return "green";
@@ -25,6 +26,7 @@ export function DashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [tasks, setTasks] = useState<GenerationTask[]>([]);
   const [plansByProduct, setPlansByProduct] = useState<PlanMap>({});
+  const [materialsByProduct, setMaterialsByProduct] = useState<MaterialMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
@@ -33,14 +35,18 @@ export function DashboardPage() {
 
     async function loadWorkspace() {
       const [nextProducts, nextTasks] = await Promise.all([api.getProducts(), api.getTasks()]);
-      const planEntries = await Promise.all(
-        nextProducts.map(async (product) => [product.id, await api.getCreativePlans(product.id)] as const)
-      );
+      const [planEntries, materialEntries] = await Promise.all([
+        Promise.all(nextProducts.map(async (product) => [product.id, await api.getCreativePlans(product.id)] as const)),
+        Promise.all(
+          nextProducts.map(async (product) => [product.id, await api.getMaterials(product.id).catch(() => [])] as const)
+        )
+      ]);
 
       if (!alive) return;
       setProducts(nextProducts);
       setTasks(nextTasks);
       setPlansByProduct(Object.fromEntries(planEntries));
+      setMaterialsByProduct(Object.fromEntries(materialEntries));
       setError(undefined);
     }
 
@@ -112,27 +118,38 @@ export function DashboardPage() {
       <Row gutter={[20, 20]}>
         {products.map((product) => {
           const plans = plansByProduct[product.id] ?? [];
+          const productMaterials = materialsByProduct[product.id] ?? [];
           const latestPlan = latestByTime(plans);
           const latestTask = latestTasksByProduct[product.id];
-          const statusText = latestTask
-            ? `渲染任务：${latestTask.status}，${latestTask.progress}%`
-            : latestPlan
-              ? `已有方案：${latestPlan.status}`
-              : "已创建商品，等待素材和方案";
-          const primaryLink = latestTask
-            ? latestTask.status === "success" && latestTask.outputVideoUrl
-              ? `/videos/${latestTask.id}`
-              : `/tasks/${latestTask.id}`
-            : latestPlan
-              ? `/creative-plans/${latestPlan.id}/review`
-              : `/products/${product.id}/materials`;
-          const primaryText = latestTask
-            ? latestTask.status === "success"
-              ? "查看成片"
-              : "查看任务"
-            : latestPlan
-              ? "继续审核"
-              : "上传素材";
+          let statusText = "无素材：等待上传素材";
+          let primaryLink = `/products/${product.id}/materials`;
+          let primaryText = "上传素材";
+
+          if (productMaterials.length > 0 && !latestPlan) {
+            statusText = `已有 ${productMaterials.length} 个素材：等待生成方案`;
+            primaryLink = `/products/${product.id}/creative-plan`;
+            primaryText = "生成方案";
+          }
+          if (latestPlan) {
+            statusText = latestPlan.status === "approved" ? "方案已审核：等待生成视频" : `方案${latestPlan.status}：等待审核`;
+            primaryLink = `/creative-plans/${latestPlan.id}/review`;
+            primaryText = latestPlan.status === "approved" ? "生成视频" : "审核方案";
+          }
+          if (latestTask) {
+            if (latestTask.status === "success" && latestTask.outputVideoUrl) {
+              statusText = "渲染成功：可查看成片";
+              primaryLink = `/videos/${latestTask.id}`;
+              primaryText = "查看成片";
+            } else if (latestTask.status === "failed") {
+              statusText = "渲染失败：查看失败原因 / 重试";
+              primaryLink = `/tasks/${latestTask.id}`;
+              primaryText = "查看失败原因";
+            } else {
+              statusText = `渲染中：${latestTask.progress}%`;
+              primaryLink = `/tasks/${latestTask.id}`;
+              primaryText = "查看进度";
+            }
+          }
 
           return (
             <Col xs={24} lg={12} key={product.id}>
@@ -145,6 +162,9 @@ export function DashboardPage() {
                 </Space>
                 <Typography.Title level={3}>{product.title}</Typography.Title>
                 <Typography.Paragraph>{product.usageScene}</Typography.Paragraph>
+                <Typography.Text type="secondary">
+                  下一步：{primaryText} · 素材 {productMaterials.length} 个 · 方案 {plans.length} 个
+                </Typography.Text>
                 <Space wrap>
                   {product.sellingPoints.map((point) => (
                     <Tag key={point}>{point}</Tag>
