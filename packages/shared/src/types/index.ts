@@ -30,24 +30,13 @@ export type ScriptStyle =
 
 export type SceneGoal = "full_demo" | "hook" | "feature" | "proof" | "cta";
 
-export type Scene = {
-  id: string;
-  creativePlanId: string;
-  order: number;
-  goal?: SceneGoal | null;
-  materialUsage?: "reference_image" | "source_clip" | "keyframe_reference" | "prompt_only" | null;
-  negativePrompt?: string | null;
-  previewVideoUrl?: string | null;
-  renderStatus?: "idle" | "pending" | "running" | "success" | "failed" | null;
-  duration: number;
-  visualDescription: string;
-  subtitle: string;
-  voiceover: string;
-  materialId?: string | null;
-  seedancePrompt: string;
-  warnings: string[];
-  transition: "cut" | "fade" | "zoom";
-};
+export type MaterialUsage =
+  | "reference_image"
+  | "source_clip"
+  | "keyframe_reference"
+  | "prompt_only";
+
+export type RenderMode = "full_video" | "scene_clips";
 
 export type AgentTrace = {
   agent: string;
@@ -73,6 +62,25 @@ export type CreativeStrategy = {
   updatedAt?: string;
 };
 
+export type Scene = {
+  id: string;
+  creativePlanId: string;
+  order: number;
+  goal?: SceneGoal | null;
+  materialUsage?: MaterialUsage | null;
+  negativePrompt?: string | null;
+  previewVideoUrl?: string | null;
+  renderStatus?: "idle" | "pending" | "running" | "success" | "failed" | null;
+  duration: number;
+  visualDescription: string;
+  subtitle: string;
+  voiceover: string;
+  materialId?: string | null;
+  seedancePrompt: string;
+  warnings: string[];
+  transition: "cut" | "fade" | "zoom";
+};
+
 export type VisualBible = {
   aspectRatio: "9:16" | "16:9";
   style: string;
@@ -89,9 +97,12 @@ export type CreativePlan = {
   productId: string;
   status: "draft" | "approved" | "rendering" | "rendered" | "failed";
   stage?: "strategy_review" | "storyboard_review" | "approved" | "rendering" | "rendered" | "failed";
-  renderMode?: "full_video" | "scene_clips";
+  renderMode?: RenderMode;
   creativeStrategy?: CreativeStrategy;
   agentTrace?: AgentTrace[];
+  strategyId?: string;
+  version?: number;
+  parentPlanId?: string;
   style: ScriptStyle;
   title: string;
   hook: string;
@@ -124,6 +135,9 @@ export type GenerationTask = {
   outputVideoUrl?: string;
   provider: "seedance_1_5" | "ffmpeg_fallback";
   errorMessage?: string;
+  type?: "creative_strategy" | "creative_plan" | "render" | "scene_render";
+  resultId?: string;
+  renderMode?: RenderMode;
   createdAt: string;
   updatedAt: string;
 };

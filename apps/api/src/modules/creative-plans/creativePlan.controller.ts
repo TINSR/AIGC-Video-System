@@ -246,4 +246,58 @@ export class CreativePlanController {
       });
     }
   };
+
+  batchUpdateScenes = async (req: Request, res: Response<ApiResponse<CreativePlan>>) => {
+    try {
+      const { id } = req.params;
+      const { scenes } = req.body;
+
+      if (!Array.isArray(scenes)) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_SCENES', message: 'scenes 必须是数组' },
+        });
+      }
+
+      const plan = await this.creativePlanService.batchUpdateScenes(id, scenes);
+      if (!plan) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '创意方案不存在' },
+        });
+      }
+
+      res.json({ success: true, data: plan });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '批量更新分镜失败';
+      const status = message.includes('does not belong to plan') ? 400 : 400;
+      res.status(status).json({
+        success: false,
+        error: {
+          code: 'INVALID_SCENE_UPDATE',
+          message,
+        },
+      });
+    }
+  };
+
+  updateScene = async (req: Request, res: Response<ApiResponse<Scene>>) => {
+    try {
+      const { id, sceneId } = req.params;
+      const scene = await this.creativePlanService.updateScene(id, sceneId, req.body);
+
+      res.json({ success: true, data: scene });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '更新分镜失败';
+      const isMissingScene = message.includes('does not belong to plan');
+      const status = isMissingScene ? 404 : 400;
+      res.status(status).json({
+        success: false,
+        error: {
+          code: isMissingScene ? 'NOT_FOUND' : 'INVALID_SCENE_UPDATE',
+          message,
+        },
+      });
+    }
+  };
 }
