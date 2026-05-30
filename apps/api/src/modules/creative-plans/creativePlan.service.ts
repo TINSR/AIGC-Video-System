@@ -83,6 +83,7 @@ function mapCreativePlanFromDb(dbPlan: {
   stage?: string | null;
   renderMode?: string | null;
   agentTrace?: unknown;
+  promptTrace?: unknown;
   strategyId?: string | null;
   version?: number | null;
   parentPlanId?: string | null;
@@ -104,6 +105,7 @@ function mapCreativePlanFromDb(dbPlan: {
     stage: (dbPlan.stage as CreativePlan['stage']) ?? undefined,
     renderMode: (dbPlan.renderMode as CreativePlan['renderMode']) ?? undefined,
     agentTrace: dbPlan.agentTrace as CreativePlan['agentTrace'],
+    creativeStrategy: dbPlan.promptTrace as CreativePlan['creativeStrategy'],
     strategyId: dbPlan.strategyId ?? undefined,
     version: dbPlan.version ?? undefined,
     parentPlanId: dbPlan.parentPlanId ?? undefined,
@@ -180,6 +182,8 @@ export class CreativePlanService {
           visualBible: creativePlan.visualBible,
           complianceWarnings: creativePlan.complianceWarnings,
           continuityWarnings: creativePlan.continuityWarnings,
+          agentTrace: creativePlan.agentTrace ?? undefined,
+          promptTrace: creativePlan.creativeStrategy ?? undefined,
           scenes: {
             create: creativePlan.scenes.map(scene => ({
               id: scene.id,

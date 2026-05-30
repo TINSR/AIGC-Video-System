@@ -338,7 +338,7 @@ export class CreativePlanPipeline {
         seedancePrompt: '', // will be filled by SeedancePromptAgent
         materialId,
         materialUsage,
-        goal: tmpl.goal,
+        goal: goals[i] || tmpl.goal,
         warnings: [],
         transition: tmpl.transition,
       });
@@ -408,16 +408,18 @@ export class CreativePlanPipeline {
     // Fix 1: Ensure total duration <= maxDuration
     let totalDuration = scenes.reduce((s, sc) => s + sc.duration, 0);
     if (totalDuration > ctx.maxDuration) {
-      const excess = totalDuration - ctx.maxDuration;
+      let remainingExcess = totalDuration - ctx.maxDuration;
+      const originalDuration = totalDuration;
       // Trim from the last scene first
-      for (let i = scenes.length - 1; i >= 0 && excess > 0; i--) {
-        const reducible = Math.min(scenes[i].duration - 1, excess);
+      for (let i = scenes.length - 1; i >= 0 && remainingExcess > 0; i--) {
+        const reducible = Math.min(scenes[i].duration - 1, remainingExcess);
         if (reducible > 0) {
           scenes[i].duration -= reducible;
           totalDuration -= reducible;
+          remainingExcess -= reducible;
         }
       }
-      fixes.push(`总时长从 ${totalDuration + excess}s 修正为 ${totalDuration}s`);
+      fixes.push(`总时长从 ${originalDuration}s 修正为 ${totalDuration}s`);
     }
 
     // Fix 2: Ensure each scene has a goal
