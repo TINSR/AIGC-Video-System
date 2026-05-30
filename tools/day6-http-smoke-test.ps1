@@ -1,33 +1,37 @@
-# Day 6 HTTP smoke test — run while API is up (default http://localhost:3001/api)
+# HTTP smoke test (ASCII only) - run while API is up: http://localhost:3001/api
 param(
-  [string]$BaseUrl = "http://localhost:3001/api"
+  [string]$BaseUrl = "http://localhost:3001/api",
+  [int]$TaskPollSeconds = 4
 )
 
 $results = @()
 
-function Record-Step($name, $script) {
+function Record-Step($name, $scriptBlock) {
   try {
-    $out = & $script
+    $out = & $scriptBlock
     $script:results += [pscustomobject]@{ Step = $name; Status = "OK"; Detail = ($out | Out-String).Trim() }
     Write-Host "[OK] $name" -ForegroundColor Green
   } catch {
     $script:results += [pscustomobject]@{ Step = $name; Status = "FAIL"; Detail = $_.Exception.Message }
-    Write-Host "[FAIL] $name — $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "[FAIL] $name - $($_.Exception.Message)" -ForegroundColor Red
   }
 }
 
 Record-Step "health" { (Invoke-RestMethod "$BaseUrl/health").data.status }
 
 $productBody = @{
-  title = "Day6 测试商品"
-  category = "测试"
-  sellingPoints = @("轻便", "耐用")
-  targetAudience = "上班族"
-  usageScene = "通勤"
-} | ConvertTo-Json
+  title          = "Smoke test product"
+  category       = "test"
+  sellingPoints  = @("light", "durable")
+  targetAudience = "office workers"
+  usageScene     = "commute"
+} | ConvertTo-Json -Compress
 
 $product = $null
-Record-Step "create product" { $script:product = (Invoke-RestMethod -Method Post -Uri "$BaseUrl/products" -ContentType "application/json" -Body $productBody).data; "id=$($script:product.id)" }
+Record-Step "create product" {
+  $script:product = (Invoke-RestMethod -Method Post -Uri "$BaseUrl/products" -ContentType "application/json; charset=utf-8" -Body $productBody).data
+  "id=$($script:product.id)"
+}
 
 if ($product) {
   Record-Step "get product" { (Invoke-RestMethod "$BaseUrl/products/$($product.id)").data.title }
@@ -44,17 +48,25 @@ if ($product) {
     $render = $null
     Record-Step "render" {
       $script:render = (Invoke-RestMethod -Method Post -Uri "$BaseUrl/creative-plans/$($gen.id)/render").data
-      "task=$($script:render.id) $($script:render.status)"
+      "task=$($script:render.id) status=$($script:render.status)"
     }
     if ($render) {
-      Start-Sleep -Seconds 4
+      Start-Sleep -Seconds $TaskPollSeconds
       Record-Step "get task" {
         $t = (Invoke-RestMethod "$BaseUrl/tasks/$($render.id)").data
-        "status=$($t.status) progress=$($t.progress) url=$($t.outputVideoUrl)"
+        "status=$($t.status) progress=$($t.progress) step=$($t.currentStep) url=$($t.outputVideoUrl)"
+      }
+      Record-Step "list tasks" {
+        $list = (Invoke-RestMethod "$BaseUrl/tasks").data
+        "count=$($list.Count)"
       }
     }
   }
 }
 
-Write-Host "`n--- Smoke summary ---"
+Write-Host ""
+Write-Host "--- Smoke summary ---"
 $results | Format-Table -AutoSize
+
+$failed = @($results | Where-Object { $_.Status -eq "FAIL" })
+if ($failed.Count -gt 0) { exit 1 }
