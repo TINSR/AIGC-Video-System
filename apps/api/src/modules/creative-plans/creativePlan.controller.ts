@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
 import { CreativePlanService } from './creativePlan.service';
+import { RenderService } from '../render/render.service';
+import { MaterialService } from '../materials/material.service';
+import * as productService from '../products/product.service';
 import { planStore } from '../../memory-store';
-import type { ApiResponse, CreativePlan, Product, Material, Scene } from '@shared/types';
+import type { ApiResponse, CreativePlan, Product, Material, Scene, GenerationTask } from '@shared/types';
 
 // Demo fixtures — 数据库未实现前的占位数据（仅 generate 使用）
 const demoProduct: Product = {
@@ -47,9 +50,13 @@ const demoMaterials: Material[] = [
 
 export class CreativePlanController {
   private creativePlanService: CreativePlanService;
+  private renderService: RenderService;
+  private materialService: MaterialService;
 
   constructor() {
     this.creativePlanService = new CreativePlanService();
+    this.renderService = new RenderService();
+    this.materialService = new MaterialService();
   }
 
   // 生成创意方案
@@ -58,11 +65,30 @@ export class CreativePlanController {
       const { productId } = req.params;
       const { style, maxDuration } = req.body;
 
-      const product = productId === demoProduct.id ? demoProduct : { ...demoProduct, id: productId };
+      let product = productId === demoProduct.id ? demoProduct : { ...demoProduct, id: productId };
+      try {
+        const storedProduct = await productService.getProductById(productId);
+        if (storedProduct) {
+          product = {
+            id: storedProduct.id,
+            title: storedProduct.title,
+            category: storedProduct.category,
+            sellingPoints: storedProduct.sellingPoints,
+            targetAudience: storedProduct.targetAudience,
+            usageScene: storedProduct.usageScene,
+            createdAt: storedProduct.createdAt.toISOString(),
+          };
+        }
+      } catch (error) {
+        console.warn('[CreativePlanController] product database read failed, using demo fallback:', error);
+      }
+
+      const storedMaterials = await this.materialService.listByProductId(productId);
+      const materials = storedMaterials.length > 0 ? storedMaterials : productId === demoProduct.id ? demoMaterials : [];
 
       const creativePlan = await this.creativePlanService.generateCreativePlan({
         product,
-        materials: demoMaterials,
+        materials,
         style,
         maxDuration,
       });
@@ -86,8 +112,7 @@ export class CreativePlanController {
   list = async (req: Request, res: Response<ApiResponse<CreativePlan[]>>) => {
     try {
       const { productId } = req.params;
-      const plans = Array.from(planStore.values())
-        .filter(p => p.productId === productId);
+      const plans = await this.creativePlanService.listCreativePlans(productId);
       res.json({
         success: true,
         data: plans,
@@ -205,7 +230,7 @@ export class CreativePlanController {
       const { id, sceneId } = req.params;
       const { modifyRequest } = req.body;
 
-      const creativePlan = planStore.get(id);
+      const creativePlan = await this.creativePlanService.getCreativePlan(id);
       if (!creativePlan) {
         return res.status(404).json({
           success: false,
@@ -216,10 +241,14 @@ export class CreativePlanController {
         });
       }
 
+      const storedMaterials = await this.materialService.listByProductId(creativePlan.productId);
+      const materials = storedMaterials.length > 0
+        ? storedMaterials
+        : creativePlan.productId === demoProduct.id ? demoMaterials : [];
       const scene = await this.creativePlanService.regenerateScene({
         creativePlan,
         sceneId,
-        materials: demoMaterials,
+        materials,
         modifyRequest,
       });
 
@@ -242,6 +271,98 @@ export class CreativePlanController {
         error: {
           code: 'INTERNAL_ERROR',
           message: error instanceof Error ? error.message : '重新生成分镜失败',
+        },
+      });
+    }
+  };
+
+  batchUpdateScenes = async (req: Request, res: Response<ApiResponse<CreativePlan>>) => {
+    try {
+      const { id } = req.params;
+      const { scenes } = req.body;
+
+      if (!Array.isArray(scenes)) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_SCENES', message: 'scenes 必须是数组' },
+        });
+      }
+
+      const plan = await this.creativePlanService.batchUpdateScenes(id, scenes);
+      if (!plan) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '创意方案不存在' },
+        });
+      }
+
+      res.json({ success: true, data: plan });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '批量更新分镜失败';
+      const status = message.includes('does not belong to plan') ? 400 : 400;
+      res.status(status).json({
+        success: false,
+        error: {
+          code: 'INVALID_SCENE_UPDATE',
+          message,
+        },
+      });
+    }
+  };
+
+  renderScene = async (req: Request, res: Response<ApiResponse<GenerationTask>>) => {
+    try {
+      const { id, sceneId } = req.params;
+      const creativePlan = await this.creativePlanService.getCreativePlan(id);
+      if (!creativePlan) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '创意方案不存在' },
+        });
+      }
+
+      const scene = creativePlan.scenes.find((s) => s.id === sceneId);
+      if (!scene) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '分镜不存在' },
+        });
+      }
+
+      const materials = await this.materialService.listByProductId(creativePlan.productId);
+      const task = await this.renderService.createSceneRenderTask(
+        creativePlan,
+        sceneId,
+        materials.length > 0 ? materials : demoMaterials
+      );
+
+      res.json({ success: true, data: task });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error instanceof Error ? error.message : '分镜预览渲染失败',
+        },
+      });
+    }
+  };
+
+  updateScene = async (req: Request, res: Response<ApiResponse<Scene>>) => {
+    try {
+      const { id, sceneId } = req.params;
+      const scene = await this.creativePlanService.updateScene(id, sceneId, req.body);
+
+      res.json({ success: true, data: scene });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '更新分镜失败';
+      const isMissingScene = message.includes('does not belong to plan');
+      const status = isMissingScene ? 404 : 400;
+      res.status(status).json({
+        success: false,
+        error: {
+          code: isMissingScene ? 'NOT_FOUND' : 'INVALID_SCENE_UPDATE',
+          message,
         },
       });
     }

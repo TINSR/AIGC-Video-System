@@ -1,49 +1,80 @@
-import { Alert, Button, Col, Row, Space, Typography, message } from "antd";
-import { useMemo, useState } from "react";
+import { Alert, Button, Col, Row, Space, Tag, Typography, message } from "antd";
+import { useState } from "react";
 import type { CreativePlan, Material, Scene } from "@clipshop/shared";
-import { api } from "../services/api";
+import { SCENE_PREVIEW_AVAILABLE, api } from "../services/api";
 import { ComplianceWarningList } from "./ComplianceWarningList";
-import { SceneCard } from "./SceneCard";
-import { SceneEditorPanel } from "./SceneEditorPanel";
+import { SceneTimelinePanel } from "./SceneTimelinePanel";
 import { ScriptResultPanel } from "./ScriptResultPanel";
+import { StrategyReviewPanel } from "./StrategyReviewPanel";
 import { VisualBiblePanel } from "./VisualBiblePanel";
 
 type Props = {
   plan: CreativePlan;
+  productName: string;
   materials: Material[];
   onRender: (taskId: string) => void;
 };
 
-export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
+type EditableScenePatch = Partial<
+  Pick<Scene, "duration" | "transition" | "subtitle" | "voiceover" | "seedancePrompt">
+>;
+
+export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) {
   const [currentPlan, setCurrentPlan] = useState(plan);
-  const [scenes, setScenes] = useState(plan.scenes);
-  const [selectedSceneId, setSelectedSceneId] = useState(plan.scenes[0]?.id);
-  const [savingSceneId, setSavingSceneId] = useState<string>();
+  const [scenes, setScenes] = useState(() => [...plan.scenes].sort((a, b) => a.order - b.order));
+  const [dirty, setDirty] = useState(false);
+  const [savingTimeline, setSavingTimeline] = useState(false);
+  const [regeneratingSceneId, setRegeneratingSceneId] = useState<string>();
+  const [renderingPreviewSceneId, setRenderingPreviewSceneId] = useState<string>();
   const [approving, setApproving] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState<string>();
 
-  const selectedScene = useMemo(
-    () => scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0],
-    [scenes, selectedSceneId]
-  );
+  const isApproved = currentPlan.status === "approved";
 
-  const materialMap = new Map(materials.map((material) => [material.id, material]));
+  const normalizeScenes = (nextScenes: Scene[]) =>
+    nextScenes.map((scene, index) => ({
+      ...scene,
+      order: index + 1,
+      duration: Math.min(15, Math.max(1, Number(scene.duration || 1)))
+    }));
 
-  const saveScene = async (patch: Partial<Scene>) => {
-    if (!selectedScene) return;
+  const updateSceneDraft = (sceneId: string, patch: EditableScenePatch) => {
+    setScenes((current) => current.map((scene) => (scene.id === sceneId ? { ...scene, ...patch } : scene)));
+    setDirty(true);
+  };
+
+  const moveScene = (sceneId: string, direction: "up" | "down") => {
+    setScenes((current) => {
+      const index = current.findIndex((scene) => scene.id === sceneId);
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (index < 0 || targetIndex < 0 || targetIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+      return normalizeScenes(next);
+    });
+    setDirty(true);
+  };
+
+  const saveTimeline = async (showToast = true) => {
     setError(undefined);
-    setSavingSceneId(selectedScene.id);
+    setSavingTimeline(true);
     try {
-      const updated = await api.updateScene(currentPlan.id, selectedScene.id, patch);
-      setScenes((current) => current.map((scene) => (scene.id === updated.id ? updated : scene)));
-      message.success("分镜已保存");
+      const normalized = normalizeScenes(scenes);
+      const updated = await api.updateCreativePlan(currentPlan.id, { scenes: normalized });
+      const updatedScenes = [...(updated.scenes ?? normalized)].sort((a, b) => a.order - b.order);
+      setCurrentPlan(updated);
+      setScenes(updatedScenes);
+      setDirty(false);
+      if (showToast) message.success("剪辑已保存");
+      return updated;
     } catch (err) {
-      const messageText = err instanceof Error ? err.message : "分镜保存失败";
+      const messageText = err instanceof Error ? err.message : "剪辑保存失败";
       setError(messageText);
       message.error(messageText);
+      throw err;
     } finally {
-      setSavingSceneId(undefined);
+      setSavingTimeline(false);
     }
   };
 
@@ -51,9 +82,11 @@ export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
     setError(undefined);
     setApproving(true);
     try {
-      const approved = await api.approvePlan(currentPlan.id);
+      const planForApprove = dirty ? await saveTimeline(false) : currentPlan;
+      const approved = await api.approvePlan(planForApprove.id);
       setCurrentPlan(approved);
-      if (approved.scenes?.length) setScenes(approved.scenes);
+      if (approved.scenes?.length) setScenes([...approved.scenes].sort((a, b) => a.order - b.order));
+      setDirty(false);
       message.success("方案已审核通过");
     } catch (err) {
       const messageText = err instanceof Error ? err.message : "审核失败";
@@ -68,7 +101,8 @@ export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
     setError(undefined);
     setRendering(true);
     try {
-      const task = await api.renderPlan(currentPlan.id);
+      const planForRender = dirty ? await saveTimeline(false) : currentPlan;
+      const task = await api.renderPlan(planForRender.id);
       message.success("生成任务已创建");
       onRender(task.id);
     } catch (err) {
@@ -80,34 +114,88 @@ export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
     }
   };
 
+  const regenerateScene = async (sceneId: string) => {
+    setError(undefined);
+    setRegeneratingSceneId(sceneId);
+    try {
+      if (dirty) await saveTimeline(false);
+      const regenerated = await api.regenerateScene(currentPlan.id, sceneId);
+      setScenes((current) => normalizeScenes(current.map((scene) => (scene.id === sceneId ? regenerated : scene))));
+      setDirty(false);
+      message.success("文案/提示词已重新生成");
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "重新生成失败";
+      setError(messageText);
+      message.error(messageText);
+    } finally {
+      setRegeneratingSceneId(undefined);
+    }
+  };
+
+  const renderScenePreview = async (sceneId: string) => {
+    setError(undefined);
+    setRenderingPreviewSceneId(sceneId);
+    try {
+      if (dirty) await saveTimeline(false);
+      setScenes((current) =>
+        current.map((scene) => (scene.id === sceneId ? { ...scene, renderStatus: "running" } : scene))
+      );
+      const updatedScene = await api.renderScenePreview(currentPlan.id, sceneId);
+      setScenes((current) => normalizeScenes(current.map((scene) => (scene.id === sceneId ? updatedScene : scene))));
+      setDirty(false);
+      message.success("分镜预览生成任务已提交");
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "分镜预览生成失败";
+      setScenes((current) =>
+        current.map((scene) => (scene.id === sceneId ? { ...scene, renderStatus: "failed" } : scene))
+      );
+      setError(messageText);
+      message.error(messageText);
+    } finally {
+      setRenderingPreviewSceneId(undefined);
+    }
+  };
+
   return (
     <Space direction="vertical" size={20} className="full-width">
       <section className="section-heading">
         <div>
           <Typography.Text type="secondary">CreativePlan Review</Typography.Text>
-          <Typography.Title level={2}>方案审核与分镜编辑</Typography.Title>
+          <Typography.Title level={2}>方案审核与分镜剪辑</Typography.Title>
+          <Space wrap>
+            <Tag color="blue">商品：{productName}</Tag>
+            <Tag color={isApproved ? "green" : "gold"}>{currentPlan.status}</Tag>
+          </Space>
           <Typography.Paragraph>
-            先确认脚本、Visual Bible 和分镜，再审核通过。审核通过后才会创建视频生成任务。
+            先调整分镜顺序、时长、转场、字幕、旁白和 Seedance Prompt，再保存剪辑并进入生成。
           </Typography.Paragraph>
         </div>
         <Space wrap>
-          <Button type="primary" size="large" loading={approving} onClick={approvePlan}>
-            审核通过
-          </Button>
           <Button
+            type="primary"
             size="large"
-            loading={rendering}
-            disabled={currentPlan.status !== "approved"}
-            onClick={renderPlan}
+            loading={approving || savingTimeline}
+            disabled={isApproved}
+            onClick={approvePlan}
           >
+            {isApproved ? "已审核通过" : "审核通过"}
+          </Button>
+          <Button size="large" loading={rendering || savingTimeline} disabled={!isApproved} onClick={renderPlan}>
             创建生成任务
           </Button>
         </Space>
       </section>
+
       {error ? <Alert type="error" showIcon message={error} /> : null}
-      {currentPlan.status !== "approved" ? (
-        <Alert type="info" showIcon message="审核通过前不会触发 render，可放心编辑分镜。" />
-      ) : null}
+      {!isApproved ? (
+        <Alert type="info" showIcon message="审核通过前不会触发 render，可以先放心编辑并保存分镜。" />
+      ) : (
+        <Alert type="success" showIcon message="方案已审核通过，可以创建视频生成任务。" />
+      )}
+      {dirty ? <Alert type="warning" showIcon message="当前有未保存剪辑；点击审核或 render 时会先自动保存。" /> : null}
+
+      <StrategyReviewPanel plan={currentPlan} productName={productName} />
+
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={12}>
           <ScriptResultPanel plan={currentPlan} />
@@ -116,37 +204,29 @@ export function CreativePlanReviewPanel({ plan, materials, onRender }: Props) {
           <VisualBiblePanel visualBible={currentPlan.visualBible} />
         </Col>
       </Row>
+
       <ComplianceWarningList
         complianceWarnings={currentPlan.complianceWarnings}
         continuityWarnings={currentPlan.continuityWarnings}
       />
-      <Row gutter={[20, 20]} align="top">
-        <Col xs={24} xl={14}>
-          <div className="scene-list">
-            {scenes.map((scene) => (
-              <SceneCard
-                key={scene.id}
-                scene={scene}
-                material={scene.materialId ? materialMap.get(scene.materialId) : undefined}
-                active={selectedScene ? scene.id === selectedScene.id : false}
-                onSelect={() => setSelectedSceneId(scene.id)}
-              />
-            ))}
-          </div>
-        </Col>
-        <Col xs={24} xl={10}>
-          {selectedScene ? (
-            <SceneEditorPanel
-              scene={selectedScene}
-              materials={materials}
-              saving={savingSceneId === selectedScene.id}
-              onSave={saveScene}
-            />
-          ) : (
-            <Alert type="warning" showIcon message="当前方案还没有分镜。" />
-          )}
-        </Col>
-      </Row>
+
+      {scenes.length > 0 ? (
+        <SceneTimelinePanel
+          scenes={scenes}
+          dirty={dirty}
+          saving={savingTimeline}
+          regeneratingSceneId={regeneratingSceneId}
+          renderingPreviewSceneId={renderingPreviewSceneId}
+          scenePreviewAvailable={SCENE_PREVIEW_AVAILABLE}
+          onChange={updateSceneDraft}
+          onMove={moveScene}
+          onSave={() => void saveTimeline()}
+          onRegenerate={regenerateScene}
+          onRenderPreview={renderScenePreview}
+        />
+      ) : (
+        <Alert type="warning" showIcon message="当前方案还没有分镜。" />
+      )}
     </Space>
   );
 }

@@ -1,31 +1,147 @@
 import { randomUUID } from 'crypto';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
+import { CreativePlanPipeline } from './CreativePlanPipeline';
 import { ComplianceAgent } from '../../agents/ComplianceAgent';
 import { ContinuityAgent } from '../../agents/ContinuityAgent';
 import { planStore } from '../../memory-store';
+import prisma from '../../config/prisma';
 import type { CreativePlanInput, CreativePlanDraft } from '@shared/types/ai-providers';
 import type { CreativePlan, Scene, Material, Product } from '@shared/types';
 
 const VALID_TRANSITIONS = new Set(['cut', 'fade', 'zoom']);
 const VALID_ASPECT_RATIOS = new Set(['9:16', '16:9']);
 
+interface SceneUpdateData {
+  id: string;
+  duration: number;
+  transition: string;
+  subtitle: string;
+  voiceover: string;
+  seedancePrompt: string;
+  goal?: string;
+  materialUsage?: string;
+  negativePrompt?: string;
+  previewVideoUrl?: string;
+  renderStatus?: string;
+}
+
+function normalizeWarnings(value: unknown): string[] {
+  return Array.isArray(value) ? (value as string[]) : [];
+}
+
+function mapSceneFromDb(scene: {
+  id: string;
+  creativePlanId: string;
+  order: number;
+  duration: number;
+  visualDescription: string;
+  subtitle: string;
+  voiceover: string;
+  materialId: string | null;
+  seedancePrompt: string;
+  warnings: unknown;
+  transition: string;
+  goal?: string | null;
+  materialUsage?: string | null;
+  negativePrompt?: string | null;
+  previewVideoUrl?: string | null;
+  renderStatus?: string | null;
+}): Scene {
+  return {
+    id: scene.id,
+    creativePlanId: scene.creativePlanId,
+    order: scene.order,
+    duration: scene.duration,
+    visualDescription: scene.visualDescription,
+    subtitle: scene.subtitle,
+    voiceover: scene.voiceover,
+    materialId: scene.materialId ?? undefined,
+    seedancePrompt: scene.seedancePrompt,
+    warnings: normalizeWarnings(scene.warnings),
+    transition: scene.transition as Scene['transition'],
+    goal: (scene.goal as Scene['goal']) ?? undefined,
+    materialUsage: (scene.materialUsage as Scene['materialUsage']) ?? undefined,
+    negativePrompt: scene.negativePrompt ?? undefined,
+    previewVideoUrl: scene.previewVideoUrl ?? undefined,
+    renderStatus: (scene.renderStatus as Scene['renderStatus']) ?? undefined,
+  };
+}
+
+function mapCreativePlanFromDb(dbPlan: {
+  id: string;
+  productId: string;
+  status: string;
+  style: string;
+  title: string;
+  hook: string;
+  adCopy: string;
+  cta: string;
+  visualBible: unknown;
+  complianceWarnings: unknown;
+  continuityWarnings: unknown;
+  createdAt: Date;
+  stage?: string | null;
+  renderMode?: string | null;
+  agentTrace?: unknown;
+  promptTrace?: unknown;
+  strategyId?: string | null;
+  version?: number | null;
+  parentPlanId?: string | null;
+  scenes: Parameters<typeof mapSceneFromDb>[0][];
+}): CreativePlan {
+  return {
+    id: dbPlan.id,
+    productId: dbPlan.productId,
+    status: dbPlan.status as CreativePlan['status'],
+    style: dbPlan.style as CreativePlan['style'],
+    title: dbPlan.title,
+    hook: dbPlan.hook,
+    adCopy: dbPlan.adCopy,
+    cta: dbPlan.cta,
+    visualBible: dbPlan.visualBible as CreativePlan['visualBible'],
+    complianceWarnings: normalizeWarnings(dbPlan.complianceWarnings),
+    continuityWarnings: normalizeWarnings(dbPlan.continuityWarnings),
+    createdAt: dbPlan.createdAt.toISOString(),
+    stage: (dbPlan.stage as CreativePlan['stage']) ?? undefined,
+    renderMode: (dbPlan.renderMode as CreativePlan['renderMode']) ?? undefined,
+    agentTrace: dbPlan.agentTrace as CreativePlan['agentTrace'],
+    creativeStrategy: dbPlan.promptTrace as CreativePlan['creativeStrategy'],
+    strategyId: dbPlan.strategyId ?? undefined,
+    version: dbPlan.version ?? undefined,
+    parentPlanId: dbPlan.parentPlanId ?? undefined,
+    scenes: dbPlan.scenes
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map(mapSceneFromDb),
+  };
+}
+
 export class CreativePlanService {
   private mockAiProvider: MockAiProvider;
+  private pipeline: CreativePlanPipeline;
   private complianceAgent: ComplianceAgent;
   private continuityAgent: ContinuityAgent;
 
   constructor() {
     this.mockAiProvider = new MockAiProvider();
+    this.pipeline = new CreativePlanPipeline();
     this.complianceAgent = new ComplianceAgent();
     this.continuityAgent = new ContinuityAgent();
   }
 
-  // 生成创意方案
+  // 生成创意方案 — 多 Agent Pipeline，MockAiProvider 作为 fallback
   async generateCreativePlan(input: CreativePlanInput): Promise<CreativePlan> {
     const { product, materials } = input;
 
-    // 1. 调用MockAiProvider生成创意方案草稿
-    const planDraft = await this.mockAiProvider.generateCreativePlan(input);
+    // 1. 尝试多 Agent Pipeline
+    let planDraft: CreativePlanDraft & { agentTrace?: any[] };
+    try {
+      planDraft = await this.pipeline.generate(input);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] Pipeline 失败，fallback 到 MockAiProvider:', message);
+      planDraft = await this.mockAiProvider.generateCreativePlan(input);
+    }
 
     // 2. 调用ComplianceAgent检查合规性
     const { complianceWarnings } = await this.complianceAgent.check(planDraft);
@@ -51,7 +167,51 @@ export class CreativePlanService {
       })),
     };
 
-    // 写入共享内存存储
+    // 尝试写入MySQL，失败则fallback到内存
+    try {
+      await prisma.creativePlan.create({
+        data: {
+          id: creativePlan.id,
+          productId: creativePlan.productId,
+          status: creativePlan.status,
+          style: creativePlan.style,
+          title: creativePlan.title,
+          hook: creativePlan.hook,
+          adCopy: creativePlan.adCopy,
+          cta: creativePlan.cta,
+          visualBible: creativePlan.visualBible,
+          complianceWarnings: creativePlan.complianceWarnings,
+          continuityWarnings: creativePlan.continuityWarnings,
+          agentTrace: creativePlan.agentTrace ?? undefined,
+          promptTrace: creativePlan.creativeStrategy ?? undefined,
+          scenes: {
+            create: creativePlan.scenes.map(scene => ({
+              id: scene.id,
+              order: scene.order,
+              duration: scene.duration,
+              visualDescription: scene.visualDescription,
+              subtitle: scene.subtitle,
+              voiceover: scene.voiceover,
+              materialId: scene.materialId ?? null,
+              seedancePrompt: scene.seedancePrompt,
+              warnings: scene.warnings,
+              transition: scene.transition,
+              goal: scene.goal ?? null,
+              materialUsage: scene.materialUsage ?? null,
+              negativePrompt: scene.negativePrompt ?? null,
+              previewVideoUrl: scene.previewVideoUrl ?? null,
+              renderStatus: scene.renderStatus ?? null,
+            }))
+          }
+        },
+        include: { scenes: { orderBy: { order: 'asc' } } }
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库写入失败，fallback到内存存储:', message);
+    }
+
+    // 始终写入内存，保证读取一致
     planStore.set(planId, creativePlan);
 
     return creativePlan;
@@ -107,7 +267,50 @@ export class CreativePlanService {
 
   // 获取创意方案详情
   async getCreativePlan(id: string): Promise<CreativePlan | null> {
+    // 优先从数据库读取
+    try {
+      const dbPlan = await prisma.creativePlan.findUnique({
+        where: { id },
+        include: { scenes: { orderBy: { order: 'asc' } } }
+      });
+
+      if (dbPlan) {
+        const plan = mapCreativePlanFromDb(dbPlan);
+
+        // 同步到内存，保证后续操作一致
+        planStore.set(id, plan);
+        return plan;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库读取失败，fallback到内存存储:', message);
+    }
+
+    // fallback到内存
     return planStore.get(id) ?? null;
+  }
+
+  async listCreativePlans(productId: string): Promise<CreativePlan[]> {
+    try {
+      const dbPlans = await prisma.creativePlan.findMany({
+        where: { productId },
+        orderBy: { createdAt: 'desc' },
+        include: { scenes: { orderBy: { order: 'asc' } } },
+      });
+
+      if (dbPlans.length > 0) {
+        const plans = dbPlans.map(mapCreativePlanFromDb);
+        plans.forEach((plan) => planStore.set(plan.id, plan));
+        return plans;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] list from database failed, falling back to memory:', message);
+    }
+
+    return Array.from(planStore.values())
+      .filter((plan) => plan.productId === productId)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   }
 
   // 更新创意方案 — 支持字段级更新，含浅层合同校验
@@ -187,9 +390,55 @@ export class CreativePlanService {
           throw new Error(`${prefix}.warnings 必须是数组`);
         }
       }
-      existing.scenes = data.scenes;
+      existing.scenes = [...data.scenes].sort((a, b) => a.order - b.order);
     }
 
+    // 尝试更新数据库
+    try {
+      const updateData: any = {
+        title: existing.title,
+        hook: existing.hook,
+        adCopy: existing.adCopy,
+        cta: existing.cta,
+        complianceWarnings: existing.complianceWarnings,
+        continuityWarnings: existing.continuityWarnings,
+        status: existing.status,
+        visualBible: existing.visualBible,
+      };
+
+      if (existing.scenes) {
+        updateData.scenes = {
+          deleteMany: {},
+          create: [...existing.scenes].sort((a, b) => a.order - b.order).map(scene => ({
+            id: scene.id,
+            order: scene.order,
+            duration: scene.duration,
+            visualDescription: scene.visualDescription,
+            subtitle: scene.subtitle,
+            voiceover: scene.voiceover,
+            materialId: scene.materialId ?? null,
+            seedancePrompt: scene.seedancePrompt,
+            warnings: scene.warnings,
+            transition: scene.transition,
+            goal: scene.goal ?? null,
+            materialUsage: scene.materialUsage ?? null,
+            negativePrompt: scene.negativePrompt ?? null,
+            previewVideoUrl: scene.previewVideoUrl ?? null,
+            renderStatus: scene.renderStatus ?? null,
+          }))
+        };
+      }
+
+      await prisma.creativePlan.update({
+        where: { id },
+        data: updateData
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库更新失败，fallback到内存存储:', message);
+    }
+
+    // 始终更新内存
     planStore.set(id, existing);
     return existing;
   }
@@ -200,8 +449,108 @@ export class CreativePlanService {
     if (!existing) return null;
 
     existing.status = 'approved';
+
+    // 尝试更新数据库
+    try {
+      await prisma.creativePlan.update({
+        where: { id },
+        data: { status: 'approved' }
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[CreativePlanService] 数据库更新失败，fallback到内存存储:', message);
+    }
+
     planStore.set(id, existing);
     return existing;
+  }
+
+  async batchUpdateScenes(planId: string, scenes: SceneUpdateData[]): Promise<CreativePlan | null> {
+    const existing = await this.getCreativePlan(planId);
+    if (!existing) return null;
+
+    for (let i = 0; i < scenes.length; i++) {
+      const scene = scenes[i];
+      const prefix = `scenes[${i}]`;
+      if (!existing.scenes.some((s) => s.id === scene.id)) {
+        throw new Error(`Scene ${scene.id} does not belong to plan ${planId}`);
+      }
+      if (scene.duration < 1 || scene.duration > 15) {
+        throw new Error(`${prefix} duration must be between 1 and 15 seconds`);
+      }
+      if (!scene.transition || scene.transition.trim() === '') {
+        throw new Error(`${prefix} transition cannot be empty`);
+      }
+      if (!scene.seedancePrompt || scene.seedancePrompt.trim() === '') {
+        throw new Error(`${prefix} seedancePrompt cannot be empty`);
+      }
+    }
+
+    const nextScenes: Scene[] = scenes.map((scene, index) => {
+      const current = existing.scenes.find((s) => s.id === scene.id)!;
+      return {
+        ...current,
+        duration: scene.duration,
+        transition: scene.transition as Scene['transition'],
+        subtitle: scene.subtitle,
+        voiceover: scene.voiceover,
+        seedancePrompt: scene.seedancePrompt,
+        order: index + 1,
+        goal: scene.goal as Scene['goal'],
+        materialUsage: scene.materialUsage as Scene['materialUsage'],
+        negativePrompt: scene.negativePrompt,
+        previewVideoUrl: scene.previewVideoUrl,
+        renderStatus: scene.renderStatus as Scene['renderStatus'],
+        warnings: current.warnings,
+      };
+    });
+
+    return this.updateCreativePlan(planId, { scenes: nextScenes });
+  }
+
+  async updateScene(planId: string, sceneId: string, data: Partial<SceneUpdateData>): Promise<Scene> {
+    const existing = await this.getCreativePlan(planId);
+    if (!existing) {
+      throw new Error(`Scene ${sceneId} does not belong to plan ${planId}`);
+    }
+
+    const sceneIndex = existing.scenes.findIndex((s) => s.id === sceneId);
+    if (sceneIndex < 0) {
+      throw new Error(`Scene ${sceneId} does not belong to plan ${planId}`);
+    }
+
+    if (data.duration !== undefined && (data.duration < 1 || data.duration > 15)) {
+      throw new Error('Duration must be between 1 and 15 seconds');
+    }
+    if (data.transition !== undefined && data.transition.trim() === '') {
+      throw new Error('Transition cannot be empty');
+    }
+    if (data.seedancePrompt !== undefined && data.seedancePrompt.trim() === '') {
+      throw new Error('Seedance prompt cannot be empty');
+    }
+
+    const current = existing.scenes[sceneIndex];
+    const updatedScene: Scene = {
+      ...current,
+      id: sceneId,
+      creativePlanId: planId,
+      duration: data.duration ?? current.duration,
+      transition: (data.transition ?? current.transition) as Scene['transition'],
+      subtitle: data.subtitle ?? current.subtitle,
+      voiceover: data.voiceover ?? current.voiceover,
+      seedancePrompt: data.seedancePrompt ?? current.seedancePrompt,
+      goal: (data.goal ?? current.goal) as Scene['goal'],
+      materialUsage: (data.materialUsage ?? current.materialUsage) as Scene['materialUsage'],
+      negativePrompt: data.negativePrompt ?? current.negativePrompt,
+      previewVideoUrl: data.previewVideoUrl ?? current.previewVideoUrl,
+      renderStatus: (data.renderStatus ?? current.renderStatus) as Scene['renderStatus'],
+      warnings: current.warnings,
+    };
+
+    const nextScenes = [...existing.scenes];
+    nextScenes[sceneIndex] = updatedScene;
+    await this.updateCreativePlan(planId, { scenes: nextScenes });
+    return updatedScene;
   }
 
   private buildProductStub(productId: string): Product {

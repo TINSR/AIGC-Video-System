@@ -30,7 +30,14 @@ export function SceneEditorPanel({ scene, materials, saving, onSave }: Props) {
         <Input.TextArea rows={3} />
       </Form.Item>
       <Space className="form-row" align="start">
-        <Form.Item label="时长" name="duration" rules={[{ required: true, message: "请填写时长" }, { type: "number", max: 15, message: "单个分镜不超过 15 秒" }]}>
+        <Form.Item
+          label="时长"
+          name="duration"
+          rules={[
+            { required: true, message: "请填写时长" },
+            { type: "number", max: 15, message: "单个分镜不超过 15 秒" }
+          ]}
+        >
           <InputNumber min={1} max={15} addonAfter="s" />
         </Form.Item>
         <Form.Item label="转场" name="transition">

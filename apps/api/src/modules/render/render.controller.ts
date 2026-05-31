@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { RenderService } from './render.service';
-import { planStore } from '../../memory-store';
+import { CreativePlanService } from '../creative-plans/creativePlan.service';
 import type { ApiResponse, GenerationTask, Material } from '@shared/types';
 
 const demoMaterials: Material[] = [
@@ -21,9 +21,11 @@ const demoMaterials: Material[] = [
 
 export class RenderController {
   private renderService: RenderService;
+  private creativePlanService: CreativePlanService;
 
   constructor() {
     this.renderService = new RenderService();
+    this.creativePlanService = new CreativePlanService();
   }
 
   // 创建渲染任务 — 从共享 planStore 读取真实 CreativePlan
@@ -31,7 +33,7 @@ export class RenderController {
     try {
       const { id } = req.params;
 
-      const creativePlan = planStore.get(id);
+      const creativePlan = await this.creativePlanService.getCreativePlan(id);
       if (!creativePlan) {
         return res.status(404).json({
           success: false,
@@ -70,6 +72,24 @@ export class RenderController {
   };
 
   // 获取任务状态
+  list = async (_req: Request, res: Response<ApiResponse<GenerationTask[]>>) => {
+    try {
+      const tasks = await this.renderService.listTasks();
+      res.json({
+        success: true,
+        data: tasks,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to list tasks',
+        },
+      });
+    }
+  };
+
   getStatus = async (req: Request, res: Response<ApiResponse<GenerationTask>>) => {
     try {
       const { id } = req.params;

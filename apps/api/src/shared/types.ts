@@ -28,15 +28,54 @@ export type ScriptStyle =
   | 'discount'
   | 'premium';
 
+export type SceneGoal = 'full_demo' | 'hook' | 'feature' | 'proof' | 'cta';
+
+export type MaterialUsage =
+  | 'reference_image'
+  | 'source_clip'
+  | 'keyframe_reference'
+  | 'prompt_only';
+
+export type RenderMode = 'full_video' | 'scene_clips';
+
+export type AgentTrace = {
+  agent: string;
+  status: 'success' | 'warning' | 'failed';
+  summary: string;
+  durationMs?: number;
+  warnings?: string[];
+};
+
+export type CreativeStrategy = {
+  id?: string;
+  productId?: string;
+  status?: 'draft' | 'approved' | 'rejected';
+  videoGoal?: string;
+  targetAudience?: string;
+  sellingPointOrder?: string[];
+  emotionalArc?: string;
+  styleDirection?: string;
+  recommendedSceneCount?: number;
+  warnings?: string[];
+  agentTrace?: AgentTrace[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type Scene = {
   id: string;
   creativePlanId: string;
   order: number;
+  goal?: SceneGoal | null;
+  materialUsage?: MaterialUsage | null;
+  negativePrompt?: string | null;
+  previewVideoUrl?: string | null;
+  renderStatus?: 'idle' | 'pending' | 'running' | 'success' | 'failed' | null;
   duration: number;
   visualDescription: string;
   subtitle: string;
   voiceover: string;
-  materialId?: string;
+  materialId?: string | null;
   seedancePrompt: string;
   warnings: string[];
   transition: 'cut' | 'fade' | 'zoom';
@@ -57,6 +96,13 @@ export type CreativePlan = {
   id: string;
   productId: string;
   status: 'draft' | 'approved' | 'rendering' | 'rendered' | 'failed';
+  stage?: 'strategy_review' | 'storyboard_review' | 'approved' | 'rendering' | 'rendered' | 'failed';
+  renderMode?: RenderMode;
+  creativeStrategy?: CreativeStrategy;
+  agentTrace?: AgentTrace[];
+  strategyId?: string;
+  version?: number;
+  parentPlanId?: string;
   style: ScriptStyle;
   title: string;
   hook: string;
@@ -87,10 +133,39 @@ export type GenerationTask = {
   currentStep: string;
   logs: TaskLog[];
   outputVideoUrl?: string;
+  outputVideoHint?: string;
   provider: 'seedance_1_5' | 'ffmpeg_fallback';
   errorMessage?: string;
+  type?: 'creative_strategy' | 'creative_plan' | 'render' | 'scene_render';
+  resultId?: string;
+  renderMode?: RenderMode;
   createdAt: string;
   updatedAt: string;
+};
+
+export type WorkspaceNextAction =
+  | 'upload_material'
+  | 'generate_plan'
+  | 'review_plan'
+  | 'render_video'
+  | 'view_task'
+  | 'view_video'
+  | 'retry';
+
+export type WorkspaceCreativePlanSummary = Pick<
+  CreativePlan,
+  'id' | 'productId' | 'status' | 'style' | 'title' | 'hook' | 'createdAt'
+> & {
+  scenesCount: number;
+};
+
+export type WorkspaceTaskItem = {
+  product: Product;
+  materialsCount: number;
+  creativePlansCount: number;
+  latestPlan?: WorkspaceCreativePlanSummary;
+  latestTask?: GenerationTask;
+  nextAction: WorkspaceNextAction;
 };
 
 export type ApiResponse<T> = {
@@ -100,4 +175,23 @@ export type ApiResponse<T> = {
     code: string;
     message: string;
   };
+};
+
+export type AnalyticsOverview = {
+  totalPlays: number;
+  totalClicks: number;
+  conversionRate: number;
+  averageWatchRate: number;
+  dailyTrend: Array<{
+    date: string;
+    plays: number;
+    clicks: number;
+    conversions: number;
+  }>;
+  abTests: Array<{
+    name: string;
+    versionA: number;
+    versionB: number;
+    winner: 'A' | 'B';
+  }>;
 };

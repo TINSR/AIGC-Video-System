@@ -6,7 +6,14 @@ const materialService = new MaterialService();
 
 const uploadSchema = z.object({
   title: z.string().min(1),
-  tags: z.array(z.string()).optional().default([]),
+  tags: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform(value => {
+      if (!value) return [];
+      const values = Array.isArray(value) ? value : value.split(',');
+      return values.map(tag => tag.trim()).filter(Boolean);
+    }),
 });
 
 export class MaterialController {

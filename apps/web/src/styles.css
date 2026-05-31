@@ -235,6 +235,18 @@ textarea {
   margin-top: 14px;
 }
 
+.visual-bible-list {
+  width: 100%;
+  margin-bottom: 14px;
+}
+
+.visual-bible-list .ant-tag {
+  width: fit-content;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.5;
+}
+
 .material-uploader {
   border-radius: 8px;
   background: rgba(17, 18, 31, 0.7);
@@ -311,6 +323,122 @@ textarea {
 .scene-list {
   display: grid;
   gap: 14px;
+}
+
+.scene-timeline {
+  display: grid;
+  gap: 16px;
+}
+
+.strategy-review,
+.plan-generation-progress {
+  display: grid;
+  gap: 16px;
+}
+
+.strategy-heading {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.strategy-heading h3,
+.plan-generation-progress h4,
+.agent-trace h4 {
+  margin: 4px 0 0 !important;
+}
+
+.strategy-descriptions {
+  padding-top: 4px;
+}
+
+.strategy-warning-list,
+.agent-trace {
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.timeline-toolbar h3 {
+  margin: 4px 0 0 !important;
+}
+
+.timeline-track {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(280px, 1fr));
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.timeline-scene {
+  display: grid;
+  gap: 12px;
+  min-width: 280px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(8, 9, 16, 0.58);
+}
+
+.timeline-scene-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-height: 34px;
+}
+
+.timeline-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.timeline-field,
+.timeline-form-grid label,
+.readonly-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.timeline-field span,
+.timeline-form-grid span,
+.readonly-field span {
+  color: #a7abc0;
+  font-size: 12px;
+}
+
+.timeline-field .ant-input,
+.timeline-field .ant-input-affix-wrapper,
+.timeline-field textarea,
+.timeline-form-grid .ant-input-number,
+.timeline-form-grid .ant-select {
+  width: 100%;
+}
+
+.readonly-field {
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.readonly-field .ant-typography {
+  margin-bottom: 0 !important;
+}
+
+.scene-warning-list {
+  display: grid;
+  gap: 8px;
 }
 
 .scene-card {
@@ -425,6 +553,17 @@ textarea {
 
   .template-grid,
   .scene-card {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-toolbar,
+  .timeline-scene-header,
+  .strategy-heading {
+    flex-direction: column;
+  }
+
+  .timeline-track,
+  .timeline-form-grid {
     grid-template-columns: 1fr;
   }
 }

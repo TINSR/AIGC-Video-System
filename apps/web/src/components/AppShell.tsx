@@ -2,8 +2,6 @@ import {
   BarChartOutlined,
   DashboardOutlined,
   FolderAddOutlined,
-  RocketOutlined,
-  VideoCameraOutlined
 } from "@ant-design/icons";
 import { Button, Layout, Menu, Space, Tag, Typography } from "antd";
 import type { MenuProps } from "antd";
@@ -11,10 +9,8 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 const items = [
   { key: "/", icon: <DashboardOutlined />, label: "工作台" },
-  { key: "/products/new", icon: <FolderAddOutlined />, label: "创建商品" },
-  { key: "/creative-plans/plan_001/review", icon: <RocketOutlined />, label: "方案审核" },
-  { key: "/videos/task_001", icon: <VideoCameraOutlined />, label: "视频预览" },
-  { key: "/analytics", icon: <BarChartOutlined />, label: "数据看板" }
+  { key: "/products/new", icon: <FolderAddOutlined />, label: "创建商品任务" },
+  { key: "/analytics", icon: <BarChartOutlined />, label: "数据看板" },
 ] satisfies NonNullable<MenuProps["items"]>;
 
 export function AppShell() {
@@ -41,8 +37,10 @@ export function AppShell() {
           className="nav-menu"
         />
         <div className="side-status">
-          <Tag color="purple">Mock Ready</Tag>
-          <Typography.Text type="secondary">前端可独立开发，后端就绪后切换 API。</Typography.Text>
+          <Tag color="purple">Real API</Tag>
+          <Typography.Text type="secondary">
+            方案审核和视频预览从工作台任务卡片进入，避免脱离具体商品上下文。
+          </Typography.Text>
         </div>
       </Layout.Sider>
       <Layout>
@@ -52,7 +50,7 @@ export function AppShell() {
             <Typography.Title level={4}>生成前审核，把黑盒变成可控创作流</Typography.Title>
           </Space>
           <Button type="primary" icon={<FolderAddOutlined />} onClick={() => navigate("/products/new")}>
-            新建商品
+            新建商品任务
           </Button>
         </Layout.Header>
         <Layout.Content className="content">

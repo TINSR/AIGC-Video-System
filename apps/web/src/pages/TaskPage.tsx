@@ -8,12 +8,19 @@ import { api, resolveAssetUrl } from "../services/api";
 
 const terminalStatuses = new Set(["success", "failed"]);
 
+function formatElapsed(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes > 0 ? `${minutes} 分 ${rest} 秒` : `${rest} 秒`;
+}
+
 export function TaskPage() {
   const { taskId = "task_001" } = useParams();
   const [task, setTask] = useState<GenerationTask>();
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string>();
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     let alive = true;
@@ -46,6 +53,11 @@ export function TaskPage() {
     };
   }, [taskId]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const handleRetry = async () => {
     setRetrying(true);
     setError(undefined);
@@ -64,6 +76,11 @@ export function TaskPage() {
 
   if (loading && !task) return <Spin fullscreen />;
 
+  const resolvedOutputUrl = resolveAssetUrl(task?.outputVideoUrl);
+  const elapsedSeconds = task?.createdAt ? Math.max(0, Math.floor((now - Date.parse(task.createdAt)) / 1000)) : 0;
+  const waiting = !!task && !terminalStatuses.has(task.status);
+  const latestLog = task?.logs?.[task.logs.length - 1];
+
   return (
     <Space direction="vertical" size={20} className="full-width">
       <section className="section-heading">
@@ -72,18 +89,31 @@ export function TaskPage() {
           <Typography.Title level={2}>任务进度</Typography.Title>
           <Typography.Paragraph>{task?.currentStep ?? "等待任务状态返回"}</Typography.Paragraph>
         </div>
-        {task?.status === "success" ? (
-          <Link to={`/videos/${task.id}`}>
-            <Button type="primary">预览成片</Button>
+        <Space wrap>
+          <Link to="/">
+            <Button>返回工作台</Button>
           </Link>
-        ) : (
-          <Button onClick={handleRetry} loading={retrying} disabled={!task || task.status !== "failed"}>
-            重试生成
-          </Button>
-        )}
+          {task?.status === "success" ? (
+            <Link to={`/videos/${task.id}`}>
+              <Button type="primary">预览成片</Button>
+            </Link>
+          ) : (
+            <Button onClick={handleRetry} loading={retrying} disabled={!task || task.status !== "failed"}>
+              重试生成
+            </Button>
+          )}
+        </Space>
       </section>
       {error ? <Alert type="error" showIcon message={error} /> : null}
       {task?.errorMessage ? <Alert type="error" showIcon message={task.errorMessage} /> : null}
+      {waiting ? (
+        <Alert
+          type="info"
+          showIcon
+          message={`远端生成中，已等待 ${formatElapsed(elapsedSeconds)}`}
+          description={`Seedance 实测可能需要 3-5 分钟。当前步骤：${task.currentStep || "等待后端更新"}。最新日志：${latestLog?.message ?? "暂无日志"}`}
+        />
+      ) : null}
       {task ? (
         <>
           <div className="surface">
@@ -94,12 +124,13 @@ export function TaskPage() {
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="progress">{task.progress}%</Descriptions.Item>
+              <Descriptions.Item label="已等待">{formatElapsed(elapsedSeconds)}</Descriptions.Item>
               <Descriptions.Item label="currentStep">{task.currentStep}</Descriptions.Item>
               <Descriptions.Item label="provider">{task.provider}</Descriptions.Item>
               <Descriptions.Item label="outputVideoUrl">
-                {task.outputVideoUrl ? (
-                  <a href={resolveAssetUrl(task.outputVideoUrl)} target="_blank" rel="noreferrer">
-                    {task.outputVideoUrl}
+                {resolvedOutputUrl ? (
+                  <a href={resolvedOutputUrl} target="_blank" rel="noreferrer">
+                    {resolvedOutputUrl}
                   </a>
                 ) : (
                   "暂无"

@@ -18,10 +18,10 @@ export function MaterialsPage() {
     setLoading(true);
     setError(undefined);
 
-    Promise.all([api.getProducts(), api.getMaterials(productId)])
-      .then(([products, materials]) => {
+    Promise.all([api.getProduct(productId), api.getMaterials(productId).catch(() => [])])
+      .then(([nextProduct, materials]) => {
         if (!alive) return;
-        setProduct(products.find((item) => item.id === productId) ?? products[0]);
+        setProduct(nextProduct);
         setProductMaterials(materials);
       })
       .catch((err) => {
@@ -55,7 +55,12 @@ export function MaterialsPage() {
           <Button type="primary">进入创意方案</Button>
         </Link>
       </section>
-      <MaterialUploader />
+      <MaterialUploader
+        productId={product.id}
+        onUploaded={async () => {
+          setProductMaterials(await api.getMaterials(product.id));
+        }}
+      />
       {productMaterials.length === 0 ? (
         <div className="surface">
           <Empty description="暂无素材，仍可继续生成 demo CreativePlan。" />

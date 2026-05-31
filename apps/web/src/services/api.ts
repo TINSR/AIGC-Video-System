@@ -5,7 +5,9 @@ import type {
   Material,
   Product,
   Scene,
-  ScriptStyle
+  ScriptStyle,
+  WorkspaceNextAction,
+  WorkspaceTaskItem
 } from "@clipshop/shared";
 import {
   analyticsOverview,
@@ -15,29 +17,51 @@ import {
   products
 } from "../data/mockData";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
+export const SCENE_PREVIEW_AVAILABLE = import.meta.env.VITE_ENABLE_SCENE_PREVIEW !== "false";
 
-// 解析静态资源 URL：/outputs 和 /uploads 需要指向 API 服务器 origin
-// mock 模式下返回相对路径（同源），真实 API 模式下拼接 API origin
-export function resolveAssetUrl(path: string): string {
-  if (!path) return path;
-  if (USE_MOCK) return path;
-  // 从 API_BASE_URL 提取 origin，例如 http://localhost:3101/api -> http://localhost:3101
-  const apiOrigin = API_BASE_URL.replace(/\/api\/?$/, "");
-  if (path.startsWith("/outputs") || path.startsWith("/uploads")) {
-    return `${apiOrigin}${path}`;
+function normalizeApiBaseUrl(value: string) {
+  const trimmed = value.replace(/\/$/, "");
+  if (/^https?:\/\//i.test(trimmed)) {
+    const url = new URL(trimmed);
+    if (url.pathname === "" || url.pathname === "/") url.pathname = "/api";
+    return url.toString().replace(/\/$/, "");
   }
-  return path;
+  if (trimmed === "") return "/api";
+  if (trimmed === "/") return "/api";
+  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+}
+
+const API_BASE_URL = normalizeApiBaseUrl(RAW_API_BASE_URL);
+
+export type WorkspaceTaskSummary = WorkspaceTaskItem;
+
+export function resolveAssetUrl(path?: string): string | undefined {
+  if (!path) return undefined;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (USE_MOCK) return path;
+  if (!path.startsWith("/outputs") && !path.startsWith("/uploads")) return path;
+
+  try {
+    return `${new URL(API_BASE_URL, window.location.origin).origin}${path}`;
+  } catch {
+    return path;
+  }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: isFormData ? undefined : { "Content-Type": "application/json" },
     ...init
   });
   const payload = await response.json().catch(() => undefined);
-  if (!response.ok || !payload?.success) {
+  if (!response.ok) {
+    throw new Error(payload?.error?.message ?? `请求失败：${response.status}`);
+  }
+  if (payload?.success === undefined) return payload as T;
+  if (!payload.success) {
     throw new Error(payload?.error?.message ?? `请求失败：${response.status}`);
   }
   return payload.data as T;
@@ -46,10 +70,48 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const wait = (ms = 180) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export const api = {
+  async getWorkspaceTasks(): Promise<WorkspaceTaskSummary[]> {
+    if (!USE_MOCK) return request<WorkspaceTaskSummary[]>("/workspace/tasks");
+    await wait();
+    return products.map((product) => {
+      const productPlans = creativePlans.filter((plan) => plan.productId === product.id);
+      const productTasks = generationTasks.filter((task) => task.productId === product.id);
+      const latestPlan = productPlans[0];
+      const latestTask = productTasks[0];
+      const materialsCount = materials.filter((material) => material.productId === product.id).length;
+      const nextAction: WorkspaceNextAction = latestTask
+        ? latestTask.status === "success"
+          ? "view_video"
+          : latestTask.status === "failed"
+            ? "retry"
+            : "view_task"
+        : latestPlan
+          ? latestPlan.status === "approved"
+            ? "render_video"
+            : "review_plan"
+          : materialsCount > 0
+            ? "generate_plan"
+            : "upload_material";
+
+      return {
+        product,
+        materialsCount,
+        creativePlansCount: productPlans.length,
+        latestPlan: latestPlan ? { ...latestPlan, scenesCount: latestPlan.scenes.length } : undefined,
+        latestTask,
+        nextAction
+      };
+    });
+  },
   async getProducts(): Promise<Product[]> {
     if (!USE_MOCK) return request<Product[]>("/products");
     await wait();
     return products;
+  },
+  async getProduct(productId: string): Promise<Product> {
+    if (!USE_MOCK) return request<Product>(`/products/${productId}`);
+    await wait();
+    return products.find((product) => product.id === productId) ?? products[0];
   },
   async createProduct(input: Omit<Product, "id" | "createdAt">): Promise<Product> {
     if (!USE_MOCK) {
@@ -70,6 +132,33 @@ export const api = {
     await wait();
     return materials.filter((material) => material.productId === productId);
   },
+  async uploadMaterial(productId: string, file: File): Promise<Material> {
+    if (!USE_MOCK) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("title", file.name);
+      formData.append("tags", "上传素材");
+      return request<Material>(`/products/${productId}/materials`, {
+        method: "POST",
+        body: formData
+      });
+    }
+    await wait();
+    const material: Material = {
+      id: `material_${Date.now()}`,
+      productId,
+      type: file.type.startsWith("video/") ? "video" : "image",
+      fileUrl: URL.createObjectURL(file),
+      thumbnailUrl: file.type.startsWith("video/") ? undefined : URL.createObjectURL(file),
+      title: file.name,
+      tags: ["上传素材"],
+      aiDescription: "",
+      duration: file.type.startsWith("video/") ? 10 : undefined,
+      createdAt: new Date().toISOString()
+    };
+    materials.unshift(material);
+    return material;
+  },
   async generateCreativePlan(
     productId: string,
     input: { style: ScriptStyle; merchantAdCopy: string; maxDuration: number }
@@ -88,6 +177,25 @@ export const api = {
     await wait();
     return creativePlans.find((plan) => plan.id === planId) ?? creativePlans[0];
   },
+  async getCreativePlans(productId: string): Promise<CreativePlan[]> {
+    if (!USE_MOCK) return request<CreativePlan[]>(`/products/${productId}/creative-plans`);
+    await wait();
+    return creativePlans.filter((plan) => plan.productId === productId);
+  },
+  async updateCreativePlan(planId: string, input: Partial<CreativePlan>): Promise<CreativePlan> {
+    if (!USE_MOCK) {
+      return request<CreativePlan>(`/creative-plans/${planId}`, {
+        method: "PUT",
+        body: JSON.stringify(input)
+      });
+    }
+    await wait();
+    const planIndex = creativePlans.findIndex((item) => item.id === planId);
+    const plan = planIndex >= 0 ? creativePlans[planIndex] : creativePlans[0];
+    const updated = { ...plan, ...input, id: planId };
+    creativePlans[planIndex >= 0 ? planIndex : 0] = updated;
+    return updated;
+  },
   async updateScene(planId: string, sceneId: string, input: Partial<Scene>): Promise<Scene> {
     if (!USE_MOCK) {
       return request<Scene>(`/creative-plans/${planId}/scenes/${sceneId}`, {
@@ -99,6 +207,59 @@ export const api = {
     const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
     const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
     const updated = { ...scene, ...input };
+    plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
+    return updated;
+  },
+  async regenerateScene(planId: string, sceneId: string): Promise<Scene> {
+    if (!USE_MOCK) {
+      return request<Scene>(`/creative-plans/${planId}/scenes/${sceneId}/regenerate`, {
+        method: "POST",
+        body: JSON.stringify({ modifyRequest: "Regenerate scene copy and Seedance prompt." })
+      });
+    }
+    await wait(500);
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
+    const updated = {
+      ...scene,
+      subtitle: `${scene.subtitle} / 已优化`,
+      voiceover: `${scene.voiceover} 现在突出一个更清晰的购买理由。`,
+      seedancePrompt: `${scene.seedancePrompt}, refreshed ecommerce short-video copy, clearer product focus`
+    };
+    plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
+    return updated;
+  },
+  async renderScenePreview(planId: string, sceneId: string): Promise<Scene> {
+    if (!USE_MOCK) {
+      const task = await request<GenerationTask>(`/creative-plans/${planId}/scenes/${sceneId}/render`, {
+        method: "POST"
+      });
+      const timeoutAt = Date.now() + 10 * 60 * 1000;
+      let latestTask = task;
+
+      while (latestTask.status === "pending" || latestTask.status === "running") {
+        if (Date.now() >= timeoutAt) throw new Error("分镜预览等待超时，请稍后在任务列表中查看结果");
+        await wait(1500);
+        latestTask = await request<GenerationTask>(`/tasks/${task.id}`);
+      }
+
+      if (latestTask.status === "failed") {
+        throw new Error(latestTask.errorMessage || "分镜预览生成失败");
+      }
+
+      const plan = await request<CreativePlan>(`/creative-plans/${planId}`);
+      const scene = plan.scenes.find((item) => item.id === sceneId);
+      if (!scene) throw new Error("分镜预览已完成，但未找到对应分镜");
+      return scene;
+    }
+    await wait(500);
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
+    const updated: Scene = {
+      ...scene,
+      previewVideoUrl: "/outputs/mock-scene-preview.mp4",
+      renderStatus: "success"
+    };
     plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
     return updated;
   },
@@ -131,6 +292,11 @@ export const api = {
     if (!USE_MOCK) return request<GenerationTask>(`/tasks/${taskId}`);
     await wait();
     return generationTasks.find((task) => task.id === taskId) ?? generationTasks[0];
+  },
+  async getTasks(): Promise<GenerationTask[]> {
+    if (!USE_MOCK) return request<GenerationTask[]>("/tasks");
+    await wait();
+    return generationTasks;
   },
   async retryTask(taskId: string): Promise<GenerationTask> {
     if (!USE_MOCK) {
