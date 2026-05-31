@@ -18,7 +18,7 @@ function Fail($label, $detail) {
 
 try {
   $h = Invoke-RestMethod "$Base/health" -TimeoutSec 5
-  if ($h.ok -ne "ok" -and $h.status -ne "ok") { Fail "health" ($h | ConvertTo-Json -Compress) }
+  if ($h.data.status -ne "ok") { Fail "health" ($h | ConvertTo-Json -Compress) }
   Ok "health"
 } catch {
   Fail "health" $_.Exception.Message
