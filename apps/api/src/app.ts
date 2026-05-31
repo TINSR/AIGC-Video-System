@@ -22,12 +22,14 @@ app.use('/outputs', express.static(path.resolve(outputDir)));
 import productRoutes from './modules/products/product.routes';
 import creativePlanRoutes from './modules/creative-plans/creativePlan.routes';
 import renderRoutes from './modules/render/render.routes';
+import workspaceRoutes from './modules/workspace/workspace.routes';
 import materialRoutes from './modules/materials/material.routes';
 import analyticsRoutes from './modules/analytics/analytics.routes';
 
 app.use('/api/products', productRoutes);
 app.use('/api', creativePlanRoutes);
 app.use('/api', renderRoutes);
+app.use('/api', workspaceRoutes);
 app.use('/api', materialRoutes);
 app.use('/api', analyticsRoutes);
 

@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { CreativePlanService } from './creativePlan.service';
+import { RenderService } from '../render/render.service';
+import { MaterialService } from '../materials/material.service';
 import { planStore } from '../../memory-store';
-import type { ApiResponse, CreativePlan, Product, Material, Scene } from '@shared/types';
+import type { ApiResponse, CreativePlan, Product, Material, Scene, GenerationTask } from '@shared/types';
 
 // Demo fixtures — 数据库未实现前的占位数据（仅 generate 使用）
 const demoProduct: Product = {
@@ -47,9 +49,13 @@ const demoMaterials: Material[] = [
 
 export class CreativePlanController {
   private creativePlanService: CreativePlanService;
+  private renderService: RenderService;
+  private materialService: MaterialService;
 
   constructor() {
     this.creativePlanService = new CreativePlanService();
+    this.renderService = new RenderService();
+    this.materialService = new MaterialService();
   }
 
   // 生成创意方案
@@ -275,6 +281,44 @@ export class CreativePlanController {
         error: {
           code: 'INVALID_SCENE_UPDATE',
           message,
+        },
+      });
+    }
+  };
+
+  renderScene = async (req: Request, res: Response<ApiResponse<GenerationTask>>) => {
+    try {
+      const { id, sceneId } = req.params;
+      const creativePlan = await this.creativePlanService.getCreativePlan(id);
+      if (!creativePlan) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '创意方案不存在' },
+        });
+      }
+
+      const scene = creativePlan.scenes.find((s) => s.id === sceneId);
+      if (!scene) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '分镜不存在' },
+        });
+      }
+
+      const materials = await this.materialService.listByProductId(creativePlan.productId);
+      const task = await this.renderService.createSceneRenderTask(
+        creativePlan,
+        sceneId,
+        materials.length > 0 ? materials : demoMaterials
+      );
+
+      res.json({ success: true, data: task });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error instanceof Error ? error.message : '分镜预览渲染失败',
         },
       });
     }
