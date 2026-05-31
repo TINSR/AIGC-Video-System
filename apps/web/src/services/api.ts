@@ -149,6 +149,7 @@ export const api = {
       productId,
       type: file.type.startsWith("video/") ? "video" : "image",
       fileUrl: URL.createObjectURL(file),
+      cloudStatus: "local_only",
       thumbnailUrl: file.type.startsWith("video/") ? undefined : URL.createObjectURL(file),
       title: file.name,
       tags: ["上传素材"],

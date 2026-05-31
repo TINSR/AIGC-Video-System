@@ -271,6 +271,11 @@ textarea {
   margin: 10px 0 6px !important;
 }
 
+.material-video-hint {
+  margin-bottom: 10px !important;
+  font-size: 12px;
+}
+
 .play-badge {
   position: absolute;
   top: 14px;

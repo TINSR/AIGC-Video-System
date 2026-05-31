@@ -1,27 +1,38 @@
+import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
+import { Spin } from "antd";
 import { AppShell } from "./components/AppShell";
-import { AnalyticsPage } from "./pages/AnalyticsPage";
-import { CreativePlanPage } from "./pages/CreativePlanPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { MaterialsPage } from "./pages/MaterialsPage";
-import { ProductNewPage } from "./pages/ProductNewPage";
-import { ReviewPage } from "./pages/ReviewPage";
-import { TaskPage } from "./pages/TaskPage";
-import { VideoPage } from "./pages/VideoPage";
+
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
+const CreativePlanPage = lazy(() =>
+  import("./pages/CreativePlanPage").then((module) => ({ default: module.CreativePlanPage }))
+);
+const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
+const MaterialsPage = lazy(() => import("./pages/MaterialsPage").then((module) => ({ default: module.MaterialsPage })));
+const ProductNewPage = lazy(() =>
+  import("./pages/ProductNewPage").then((module) => ({ default: module.ProductNewPage }))
+);
+const ReviewPage = lazy(() => import("./pages/ReviewPage").then((module) => ({ default: module.ReviewPage })));
+const TaskPage = lazy(() => import("./pages/TaskPage").then((module) => ({ default: module.TaskPage })));
+const VideoPage = lazy(() => import("./pages/VideoPage").then((module) => ({ default: module.VideoPage })));
+
+function lazyPage(element: ReactNode) {
+  return <Suspense fallback={<Spin fullscreen />}>{element}</Suspense>;
+}
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: <AppShell />,
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: "products/new", element: <ProductNewPage /> },
-      { path: "products/:productId/materials", element: <MaterialsPage /> },
-      { path: "products/:productId/creative-plan", element: <CreativePlanPage /> },
-      { path: "creative-plans/:planId/review", element: <ReviewPage /> },
-      { path: "tasks/:taskId", element: <TaskPage /> },
-      { path: "videos/:videoId", element: <VideoPage /> },
-      { path: "analytics", element: <AnalyticsPage /> },
+      { index: true, element: lazyPage(<DashboardPage />) },
+      { path: "products/new", element: lazyPage(<ProductNewPage />) },
+      { path: "products/:productId/materials", element: lazyPage(<MaterialsPage />) },
+      { path: "products/:productId/creative-plan", element: lazyPage(<CreativePlanPage />) },
+      { path: "creative-plans/:planId/review", element: lazyPage(<ReviewPage />) },
+      { path: "tasks/:taskId", element: lazyPage(<TaskPage />) },
+      { path: "videos/:videoId", element: lazyPage(<VideoPage />) },
+      { path: "analytics", element: lazyPage(<AnalyticsPage />) },
       { path: "*", element: <Navigate to="/" replace /> }
     ]
   }
