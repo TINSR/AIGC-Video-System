@@ -114,7 +114,11 @@ export class Seedance15OfficialAdapter {
 
     // Seedance 1.5 only accepts one first-frame image.
     // Prefer publicUrl (OSS/TOS), fallback to local base64, then pure prompt.
-    const firstImage = input.materials.find(m => m.type === 'image');
+    const sceneMaterialId = input.scenes.find(scene => scene.materialId)?.materialId;
+    const sceneImage = sceneMaterialId
+      ? input.materials.find(material => material.id === sceneMaterialId && material.type === 'image')
+      : undefined;
+    const firstImage = sceneImage || input.materials.find(material => material.type === 'image');
     if (firstImage) {
       const imageUrl = this.resolveFirstFrameUrl(firstImage);
       if (imageUrl) {
@@ -157,7 +161,7 @@ export class Seedance15OfficialAdapter {
     }
 
     // 2. Fallback to local base64 (only if explicitly allowed)
-    if (process.env.ALLOW_LOCAL_BASE64_FIRST_FRAME !== 'false') {
+    if (process.env.ALLOW_LOCAL_BASE64_FIRST_FRAME === 'true') {
       return this.readImageBase64(material.fileUrl);
     }
 

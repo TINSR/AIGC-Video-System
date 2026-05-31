@@ -20,7 +20,9 @@ type MaterialRecord = {
   createdAt: Date;
 };
 
-type EditableMaterialFields = Pick<Material, 'title' | 'tags' | 'aiDescription' | 'duration' | 'thumbnailUrl' | 'publicUrl'>;
+type EditableMaterialFields = Pick<Material, 'title' | 'tags' | 'aiDescription' | 'duration' | 'thumbnailUrl'> & {
+  publicUrl?: string | null;
+};
 
 function parseTags(raw: string): string[] {
   try {
@@ -54,7 +56,7 @@ function pickEditableFields(data: Partial<Material>): Partial<EditableMaterialFi
   if (typeof data.aiDescription === 'string') editable.aiDescription = data.aiDescription;
   if (typeof data.duration === 'number') editable.duration = data.duration;
   if (typeof data.thumbnailUrl === 'string') editable.thumbnailUrl = data.thumbnailUrl;
-  if (typeof data.publicUrl === 'string' || data.publicUrl === null) editable.publicUrl = data.publicUrl ?? undefined;
+  if (typeof data.publicUrl === 'string' || data.publicUrl === null) editable.publicUrl = data.publicUrl;
   return editable;
 }
 
@@ -145,7 +147,11 @@ export class MaterialService {
     if (!existing) return null;
 
     const editable = pickEditableFields(data);
-    const updated = { ...existing, ...editable };
+    const updated: Material = {
+      ...existing,
+      ...editable,
+      publicUrl: editable.publicUrl === null ? undefined : editable.publicUrl ?? existing.publicUrl,
+    };
 
     try {
       await prisma.material.update({
