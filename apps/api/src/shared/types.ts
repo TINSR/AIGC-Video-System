@@ -133,6 +133,7 @@ export type GenerationTask = {
   currentStep: string;
   logs: TaskLog[];
   outputVideoUrl?: string;
+  outputVideoHint?: string;
   provider: 'seedance_1_5' | 'ffmpeg_fallback';
   errorMessage?: string;
   type?: 'creative_strategy' | 'creative_plan' | 'render' | 'scene_render';
@@ -140,6 +141,31 @@ export type GenerationTask = {
   renderMode?: RenderMode;
   createdAt: string;
   updatedAt: string;
+};
+
+export type WorkspaceNextAction =
+  | 'upload_material'
+  | 'generate_plan'
+  | 'review_plan'
+  | 'render_video'
+  | 'view_task'
+  | 'view_video'
+  | 'retry';
+
+export type WorkspaceCreativePlanSummary = Pick<
+  CreativePlan,
+  'id' | 'productId' | 'status' | 'style' | 'title' | 'hook' | 'createdAt'
+> & {
+  scenesCount: number;
+};
+
+export type WorkspaceTaskItem = {
+  product: Product;
+  materialsCount: number;
+  creativePlansCount: number;
+  latestPlan?: WorkspaceCreativePlanSummary;
+  latestTask?: GenerationTask;
+  nextAction: WorkspaceNextAction;
 };
 
 export type ApiResponse<T> = {

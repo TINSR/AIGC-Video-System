@@ -9,6 +9,7 @@ router.get('/creative-plans/:id', controller.get);
 router.put('/creative-plans/:id', controller.update);
 router.post('/creative-plans/:id/approve', controller.approve);
 router.post('/creative-plans/:id/scenes/:sceneId/regenerate', controller.regenerateScene);
+router.post('/creative-plans/:id/scenes/:sceneId/render', controller.renderScene);
 router.put('/creative-plans/:id/scenes/:sceneId', controller.updateScene);
 router.put('/creative-plans/:id/scenes', controller.batchUpdateScenes);
 

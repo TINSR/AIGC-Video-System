@@ -4,8 +4,10 @@ import { Seedance15Provider } from '../../providers/video/Seedance15Provider';
 import { FFmpegComposeProvider } from '../../providers/video/FFmpegComposeProvider';
 import { taskStore, planStore, taskMaterialsStore } from '../../memory-store';
 import { downloadVideoToOutputs } from '../../utils/videoDownload';
+import { enrichTaskOutputVideo } from '../../utils/outputVideoUrl';
+import { CreativePlanService } from '../creative-plans/creativePlan.service';
 import { listTasksFromDatabase, loadTaskFromDatabase, persistTaskToDatabase } from './taskPersistence';
-import type { GenerationTask, CreativePlan, Material, TaskLog } from '@shared/types';
+import type { GenerationTask, CreativePlan, Material, Scene, TaskLog } from '@shared/types';
 
 // Day 1 任务进度约定
 const STEP_MAP: Record<number, string> = {
@@ -36,10 +38,12 @@ async function syncTask(task: GenerationTask): Promise<void> {
 export class RenderService {
   private seedanceProvider: Seedance15Provider;
   private ffmpegProvider: FFmpegComposeProvider;
+  private creativePlanService: CreativePlanService;
 
   constructor() {
     this.seedanceProvider = new Seedance15Provider();
     this.ffmpegProvider = new FFmpegComposeProvider();
+    this.creativePlanService = new CreativePlanService();
   }
 
   // 创建渲染任务
@@ -60,6 +64,8 @@ export class RenderService {
       currentStep: STEP_MAP[0],
       logs: [makeLog('info', '任务已创建')],
       provider: 'seedance_1_5',
+      type: 'render',
+      renderMode: 'full_video',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -294,26 +300,290 @@ export class RenderService {
     }
   }
 
+  // 分镜级预览渲染 — 不影响整片 render，成功后写回 scene.previewVideoUrl
+  async createSceneRenderTask(
+    creativePlan: CreativePlan,
+    sceneId: string,
+    materials: Material[]
+  ): Promise<GenerationTask> {
+    const scene = creativePlan.scenes.find((s) => s.id === sceneId);
+    if (!scene) {
+      throw new Error(`分镜 ${sceneId} 不存在`);
+    }
+    if (!creativePlan.visualBible) {
+      throw new Error('创意方案缺少 VisualBible，无法渲染分镜');
+    }
+
+    await this.creativePlanService.updateScene(creativePlan.id, sceneId, {
+      renderStatus: 'running',
+    });
+
+    const task: GenerationTask = {
+      id: randomUUID(),
+      productId: creativePlan.productId,
+      creativePlanId: creativePlan.id,
+      status: 'pending',
+      progress: 0,
+      currentStep: '分镜预览任务已创建',
+      logs: [makeLog('info', `分镜预览任务已创建（scene=${sceneId}）`)],
+      provider: 'seedance_1_5',
+      type: 'scene_render',
+      renderMode: 'scene_clips',
+      resultId: sceneId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await syncTask(task);
+    taskMaterialsStore.set(task.id, materials);
+
+    this.executeSceneRenderTask(task, creativePlan, scene, materials).catch(async (error) => {
+      console.error('分镜渲染失败:', error);
+      task.status = 'failed';
+      task.errorMessage = error instanceof Error ? error.message : '分镜渲染异常';
+      task.logs.push(makeLog('error', `分镜渲染异常：${task.errorMessage}`));
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+      await this.creativePlanService.updateScene(creativePlan.id, sceneId, {
+        renderStatus: 'failed',
+      });
+    });
+
+    return task;
+  }
+
+  private async executeSceneRenderTask(
+    task: GenerationTask,
+    creativePlan: CreativePlan,
+    scene: Scene,
+    materials: Material[]
+  ): Promise<void> {
+    const outputBasename = `scene-${scene.id}-${task.id}`;
+    const outputUrl = `/outputs/${outputBasename}.mp4`;
+
+    try {
+      task.status = 'running';
+      task.progress = 10;
+      task.currentStep = `读取分镜 ${scene.order}，准备生成预览`;
+      task.logs.push(makeLog('info', task.currentStep));
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+
+      const hasKey = !!process.env.SEEDANCE_API_KEY;
+      task.logs.push(makeLog('info', `分镜 Seedance prompt（API Key ${hasKey ? '已配置' : '未配置'}）`));
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+
+      const seedanceResult = await this.seedanceProvider.render({
+        creativePlanId: creativePlan.id,
+        scenes: [scene],
+        materials,
+        visualBible: creativePlan.visualBible,
+        resolution: '1080p',
+        aspectRatio: creativePlan.visualBible.aspectRatio || '9:16',
+      });
+
+      if (seedanceResult.status === 'failed') {
+        task.logs.push(makeLog('warn', `分镜 Seedance 失败：${seedanceResult.errorMessage}，切换 FFmpeg 预览`));
+        task.updatedAt = new Date().toISOString();
+        await syncTask(task);
+        await this.renderSceneWithFFmpeg(task, creativePlan, scene, materials, outputBasename, outputUrl);
+        return;
+      }
+
+      task.currentStep = '已提交分镜 Seedance 任务，等待远端生成';
+      task.logs.push(makeLog('info', `已提交分镜 Seedance 任务，ID：${seedanceResult.taskId}`));
+      task.progress = 25;
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+
+      await this.waitForSeedanceSceneCompletion(
+        task,
+        seedanceResult.taskId,
+        creativePlan,
+        scene,
+        materials,
+        outputBasename,
+        outputUrl
+      );
+    } catch (error) {
+      task.status = 'failed';
+      task.errorMessage = error instanceof Error ? error.message : '分镜渲染失败';
+      task.logs.push(makeLog('error', task.errorMessage));
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+      await this.creativePlanService.updateScene(creativePlan.id, scene.id, {
+        renderStatus: 'failed',
+      });
+    }
+  }
+
+  private async waitForSeedanceSceneCompletion(
+    task: GenerationTask,
+    seedanceTaskId: string,
+    creativePlan: CreativePlan,
+    scene: Scene,
+    materials: Material[],
+    outputBasename: string,
+    outputUrl: string
+  ): Promise<void> {
+    const pollIntervalMs = Math.max(Number(process.env.SEEDANCE_POLL_INTERVAL_MS) || 5000, 1000);
+    const maxWaitMs = Math.max(Number(process.env.SEEDANCE_SCENE_POLL_TIMEOUT_MS) || 10 * 60 * 1000, pollIntervalMs);
+    const heartbeatIntervalMs = Math.max(Number(process.env.SEEDANCE_HEARTBEAT_INTERVAL_MS) || 30_000, 10_000);
+    const startedAt = Date.now();
+    let lastHeartbeatAt = startedAt;
+
+    while (Date.now() - startedAt < maxWaitMs) {
+      const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+      if (Date.now() - lastHeartbeatAt >= heartbeatIntervalMs) {
+        task.currentStep = `分镜远端生成中，已等待 ${elapsedSec} 秒`;
+        task.logs.push(makeLog('info', task.currentStep));
+        task.updatedAt = new Date().toISOString();
+        await syncTask(task);
+        lastHeartbeatAt = Date.now();
+      }
+
+      const status = await this.seedanceProvider.getTaskStatus(seedanceTaskId);
+
+      if (status.status === 'success' && status.videoUrl) {
+        task.currentStep = '分镜 Seedance 成功，开始下载预览视频';
+        task.logs.push(makeLog('info', task.currentStep));
+        task.updatedAt = new Date().toISOString();
+        await syncTask(task);
+
+        const download = await downloadVideoToOutputs(status.videoUrl, outputBasename);
+        if (download.ok) {
+          await this.finishSceneRenderSuccess(task, creativePlan.id, scene.id, outputUrl, download.localUrl);
+          return;
+        }
+
+        task.outputVideoUrl = status.videoUrl;
+        task.status = 'success';
+        task.progress = 100;
+        task.currentStep = '分镜预览完成（使用远端 URL）';
+        task.logs.push(makeLog('warn', `分镜视频落盘失败：${download.reason}，保留远端 URL`));
+        task.updatedAt = new Date().toISOString();
+        await syncTask(task);
+        await this.creativePlanService.updateScene(creativePlan.id, scene.id, {
+          previewVideoUrl: status.videoUrl,
+          renderStatus: 'success',
+        });
+        return;
+      }
+
+      if (status.status === 'failed') {
+        task.logs.push(makeLog('warn', `分镜 Seedance 失败：${status.errorMessage}，切换 FFmpeg`));
+        task.updatedAt = new Date().toISOString();
+        await syncTask(task);
+        await this.renderSceneWithFFmpeg(task, creativePlan, scene, materials, outputBasename, outputUrl);
+        return;
+      }
+
+      task.progress = Math.max(task.progress, 25 + Math.floor((status.progress / 100) * 60));
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+
+    task.logs.push(makeLog('warn', '分镜 Seedance 超时，切换 FFmpeg 预览'));
+    task.updatedAt = new Date().toISOString();
+    await syncTask(task);
+    await this.renderSceneWithFFmpeg(task, creativePlan, scene, materials, outputBasename, outputUrl);
+  }
+
+  private async renderSceneWithFFmpeg(
+    task: GenerationTask,
+    creativePlan: CreativePlan,
+    scene: Scene,
+    materials: Material[],
+    outputBasename: string,
+    outputUrl: string
+  ): Promise<void> {
+    task.provider = 'ffmpeg_fallback';
+    const ffmpegCheck = await this.ffmpegProvider.checkFFmpegAvailability();
+    if (!ffmpegCheck.available) {
+      task.status = 'failed';
+      task.errorMessage = `FFmpeg 不可用：${ffmpegCheck.error}`;
+      task.logs.push(makeLog('error', task.errorMessage));
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+      await this.creativePlanService.updateScene(creativePlan.id, scene.id, { renderStatus: 'failed' });
+      return;
+    }
+
+    const outputDir = process.env.OUTPUT_DIR || './outputs';
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    const outputPath = `${outputDir}/${outputBasename}.mp4`;
+    const miniPlan: CreativePlan = { ...creativePlan, scenes: [scene] };
+
+    task.currentStep = 'FFmpeg 生成分镜预览';
+    task.logs.push(makeLog('info', task.currentStep));
+    task.updatedAt = new Date().toISOString();
+    await syncTask(task);
+
+    const result = await this.ffmpegProvider.generateFromPlan({
+      plan: miniPlan,
+      materials,
+      outputPath,
+    });
+
+    if (result.success && fs.existsSync(outputPath)) {
+      await this.finishSceneRenderSuccess(task, creativePlan.id, scene.id, outputUrl, outputUrl);
+      return;
+    }
+
+    task.status = 'failed';
+    task.errorMessage = result.errorMessage || 'FFmpeg 分镜预览失败';
+    task.logs.push(makeLog('error', task.errorMessage));
+    task.updatedAt = new Date().toISOString();
+    await syncTask(task);
+    await this.creativePlanService.updateScene(creativePlan.id, scene.id, { renderStatus: 'failed' });
+  }
+
+  private async finishSceneRenderSuccess(
+    task: GenerationTask,
+    planId: string,
+    sceneId: string,
+    previewUrl: string,
+    logUrl: string
+  ): Promise<void> {
+    task.status = 'success';
+    task.progress = 100;
+    task.outputVideoUrl = previewUrl;
+    task.currentStep = '分镜预览生成完成';
+    task.logs.push(makeLog('info', `分镜预览已保存：${logUrl}`));
+    task.updatedAt = new Date().toISOString();
+    await syncTask(task);
+    await this.creativePlanService.updateScene(planId, sceneId, {
+      previewVideoUrl: previewUrl,
+      renderStatus: 'success',
+    });
+  }
+
   // 获取任务状态 — 优先 MySQL，fallback 内存
   async getTaskStatus(taskId: string): Promise<GenerationTask | null> {
     const fromDb = await loadTaskFromDatabase(taskId);
     if (fromDb) {
       taskStore.set(taskId, fromDb);
-      return fromDb;
+      return enrichTaskOutputVideo(fromDb);
     }
-    return taskStore.get(taskId) ?? null;
+    const fromMemory = taskStore.get(taskId);
+    return fromMemory ? enrichTaskOutputVideo(fromMemory) : null;
   }
 
   async listTasks(limit = 20): Promise<GenerationTask[]> {
     const fromDb = await listTasksFromDatabase(limit);
     if (fromDb.length > 0) {
       fromDb.forEach((task) => taskStore.set(task.id, task));
-      return fromDb;
+      return fromDb.map(enrichTaskOutputVideo);
     }
 
     return Array.from(taskStore.values())
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(enrichTaskOutputVideo);
   }
 
   // 重试失败任务 — 从 planStore 读取真实 CreativePlan

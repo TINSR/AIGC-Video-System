@@ -19,6 +19,9 @@ function mapDbTask(record: {
   provider: string;
   outputVideoUrl: string | null;
   errorMessage: string | null;
+  type: string | null;
+  resultId: string | null;
+  renderMode: string | null;
   createdAt: Date;
   updatedAt: Date;
   logs: Array<{
@@ -46,9 +49,27 @@ function mapDbTask(record: {
     outputVideoUrl: record.outputVideoUrl ?? undefined,
     provider: record.provider as GenerationTask['provider'],
     errorMessage: record.errorMessage ?? undefined,
+    type: (record.type as GenerationTask['type']) ?? 'render',
+    resultId: record.resultId ?? undefined,
+    renderMode: (record.renderMode as GenerationTask['renderMode']) ?? undefined,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
-    type: 'render',
+  };
+}
+
+function taskDbPayload(task: GenerationTask) {
+  return {
+    productId: task.productId,
+    creativePlanId: task.creativePlanId,
+    status: task.status,
+    progress: task.progress,
+    currentStep: task.currentStep,
+    provider: task.provider,
+    outputVideoUrl: task.outputVideoUrl ?? null,
+    errorMessage: truncateErrorMessage(task.errorMessage),
+    type: task.type ?? 'render',
+    resultId: task.resultId ?? null,
+    renderMode: task.renderMode ?? null,
   };
 }
 
@@ -84,27 +105,15 @@ export async function listTasksFromDatabase(limit = 20): Promise<GenerationTask[
 
 export async function persistTaskToDatabase(task: GenerationTask): Promise<void> {
   try {
+    const payload = taskDbPayload(task);
     await prisma.generationTask.upsert({
       where: { id: task.id },
       create: {
         id: task.id,
-        productId: task.productId,
-        creativePlanId: task.creativePlanId,
-        status: task.status,
-        progress: task.progress,
-        currentStep: task.currentStep,
-        provider: task.provider,
-        outputVideoUrl: task.outputVideoUrl ?? null,
-        errorMessage: truncateErrorMessage(task.errorMessage),
-        type: 'render',
+        ...payload,
       },
       update: {
-        status: task.status,
-        progress: task.progress,
-        currentStep: task.currentStep,
-        provider: task.provider,
-        outputVideoUrl: task.outputVideoUrl ?? null,
-        errorMessage: truncateErrorMessage(task.errorMessage),
+        ...payload,
         updatedAt: new Date(),
       },
     });
