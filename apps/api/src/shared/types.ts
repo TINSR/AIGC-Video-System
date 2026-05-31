@@ -1,3 +1,9 @@
+export {
+  SEEDANCE_15_CAPABILITIES,
+  type VideoModelCapabilities,
+  type VideoRenderInput,
+} from './types/video-provider';
+
 export type Product = {
   id: string;
   title: string;

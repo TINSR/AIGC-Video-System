@@ -5,13 +5,14 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node src/server.ts",
+    "dev": "ts-node -r tsconfig-paths/register src/server.ts",
     "start": "node dist/server.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "smoke:http": "powershell -ExecutionPolicy Bypass -File ../../tools/day6-http-smoke-test.ps1"
+    "smoke:http": "powershell -ExecutionPolicy Bypass -File ../../tools/day6-http-smoke-test.ps1",
+    "smoke:day11": "powershell -ExecutionPolicy Bypass -File ../../tools/day11-material-primary-smoke.ps1"
   },
   "keywords": [
     "express",
@@ -41,6 +42,7 @@
     "@types/node": "^20.12.12",
     "prisma": "^5.14.0",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.4.5"
   },
   "prisma": {

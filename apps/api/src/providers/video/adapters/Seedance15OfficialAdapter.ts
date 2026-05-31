@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SeedanceRenderInput, SeedanceRenderOutput, SeedanceTaskStatus } from '@shared/types/ai-providers';
-import { SEEDANCE_15_CAPABILITIES } from '@shared/types/video-provider';
+import { SEEDANCE_15_CAPABILITIES } from '@shared/types';
 import { selectFirstFrameMaterial } from '../../../utils/selectFirstFrameMaterial';
 
 type ArkTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'expired' | string;
