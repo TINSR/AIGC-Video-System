@@ -79,6 +79,27 @@ function taskDbPayload(task: GenerationTask) {
   };
 }
 
+export async function loadTasksByIds(taskIds: string[]): Promise<Map<string, GenerationTask>> {
+  const result = new Map<string, GenerationTask>();
+  const uniqueIds = [...new Set(taskIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return result;
+
+  try {
+    const records = await prisma.generationTask.findMany({
+      where: { id: { in: uniqueIds } },
+      include: { logs: { orderBy: { timestamp: 'asc' } } },
+    });
+    for (const record of records) {
+      result.set(record.id, mapDbTask(record));
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[taskPersistence] batch read tasks failed:', message);
+  }
+
+  return result;
+}
+
 export async function loadTaskFromDatabase(taskId: string): Promise<GenerationTask | null> {
   try {
     const record = await prisma.generationTask.findUnique({

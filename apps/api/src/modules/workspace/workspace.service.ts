@@ -1,6 +1,6 @@
 import prisma from '../../config/prisma';
 import { enrichTaskOutputVideo } from '../../utils/outputVideoUrl';
-import { loadTaskFromDatabase } from '../render/taskPersistence';
+import { loadTasksByIds } from '../render/taskPersistence';
 import type {
   GenerationTask,
   Product,
@@ -99,6 +99,11 @@ export class WorkspaceService {
       },
     });
 
+    const taskIds = products
+      .map((row) => row.tasks[0]?.id)
+      .filter((id): id is string => typeof id === 'string');
+    const taskById = await loadTasksByIds(taskIds);
+
     const items: WorkspaceTaskItem[] = [];
 
     for (const row of products) {
@@ -108,7 +113,7 @@ export class WorkspaceService {
       let latestTask: GenerationTask | undefined;
       const latestTaskRow = row.tasks[0];
       if (latestTaskRow) {
-        const fromDb = await loadTaskFromDatabase(latestTaskRow.id);
+        const fromDb = taskById.get(latestTaskRow.id);
         latestTask = fromDb ? enrichTaskOutputVideo(fromDb) : undefined;
       }
 

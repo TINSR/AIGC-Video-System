@@ -31,6 +31,8 @@ model Material {
   tags          String
   aiDescription String?
   duration      Float?
+  publicUrl     String?  @db.Text
+  cloudStatus   String?  // uploaded | local_only | failed
   createdAt     DateTime @default(now())
   product       Product  @relation(fields: [productId], references: [id])
 }

@@ -8,6 +8,8 @@ export type Product = {
   createdAt: string;
 };
 
+export type MaterialCloudStatus = 'uploaded' | 'local_only' | 'failed';
+
 export type Material = {
   id: string;
   productId: string;
@@ -18,6 +20,8 @@ export type Material = {
   tags: string[];
   aiDescription?: string;
   duration?: number;
+  publicUrl?: string;
+  cloudStatus?: MaterialCloudStatus;
   createdAt: string;
 };
 

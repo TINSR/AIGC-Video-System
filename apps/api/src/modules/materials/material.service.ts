@@ -2,9 +2,15 @@ import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import prisma from '../../config/prisma';
-import type { Material } from '@shared/types';
+import { uploadToObjectStorage, isObjectStorageConfigured } from '../../providers/storage/objectStorage';
+import type { Material, MaterialCloudStatus } from '@shared/types';
 
 export const materialStore = new Map<string, Material>();
+
+const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+const VIDEO_EXT = new Set(['.mp4', '.mov', '.avi', '.webm']);
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 type MaterialRecord = {
   id: string;
@@ -16,10 +22,15 @@ type MaterialRecord = {
   tags: string;
   aiDescription: string | null;
   duration: number | null;
+  publicUrl: string | null;
+  cloudStatus: string | null;
   createdAt: Date;
 };
 
-type EditableMaterialFields = Pick<Material, 'title' | 'tags' | 'aiDescription' | 'duration' | 'thumbnailUrl'>;
+type EditableMaterialFields = Pick<
+  Material,
+  'title' | 'tags' | 'aiDescription' | 'duration' | 'thumbnailUrl' | 'publicUrl' | 'cloudStatus'
+>;
 
 function parseTags(raw: string): string[] {
   try {
@@ -41,6 +52,8 @@ function mapMaterial(record: MaterialRecord): Material {
     tags: parseTags(record.tags),
     aiDescription: record.aiDescription ?? undefined,
     duration: record.duration ?? undefined,
+    publicUrl: record.publicUrl ?? undefined,
+    cloudStatus: (record.cloudStatus as MaterialCloudStatus) ?? undefined,
     createdAt: record.createdAt.toISOString(),
   };
 }
@@ -52,6 +65,8 @@ function pickEditableFields(data: Partial<Material>): Partial<EditableMaterialFi
   if (typeof data.aiDescription === 'string') editable.aiDescription = data.aiDescription;
   if (typeof data.duration === 'number') editable.duration = data.duration;
   if (typeof data.thumbnailUrl === 'string') editable.thumbnailUrl = data.thumbnailUrl;
+  if (typeof data.publicUrl === 'string') editable.publicUrl = data.publicUrl;
+  if (data.cloudStatus) editable.cloudStatus = data.cloudStatus;
   return editable;
 }
 
@@ -60,6 +75,21 @@ function toPrismaUpdate(data: Partial<EditableMaterialFields>) {
     ...data,
     tags: data.tags ? JSON.stringify(data.tags) : undefined,
   };
+}
+
+function resolveContentType(ext: string): string {
+  const map: Record<string, string> = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.mp4': 'video/mp4',
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo',
+    '.webm': 'video/webm',
+  };
+  return map[ext] || 'application/octet-stream';
 }
 
 export class MaterialService {
@@ -86,13 +116,38 @@ export class MaterialService {
   ): Promise<Material> {
     const id = randomUUID();
     const ext = path.extname(file.originalname).toLowerCase();
-    const type: Material['type'] = ['.jpg', '.jpeg', '.png', '.gif'].includes(ext) ? 'image' : 'video';
+    if (!IMAGE_EXT.has(ext) && !VIDEO_EXT.has(ext)) {
+      throw new Error('不支持的文件类型');
+    }
+
+    const type: Material['type'] = IMAGE_EXT.has(ext) ? 'image' : 'video';
+    const maxSize = type === 'image' ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+    if (file.size > maxSize) {
+      throw new Error(`文件超过大小限制（${type === 'image' ? '20MB' : '200MB'}）`);
+    }
+
     const fileName = `${id}${ext}`;
     const uploadDir = path.resolve(process.env.UPLOAD_DIR || './uploads');
     const filePath = path.join(uploadDir, fileName);
 
     await fs.mkdir(uploadDir, { recursive: true });
     await fs.writeFile(filePath, file.buffer);
+
+    let cloudStatus: MaterialCloudStatus = isObjectStorageConfigured() ? 'failed' : 'local_only';
+    let publicUrl: string | undefined;
+
+    if (isObjectStorageConfigured()) {
+      const objectKey = `materials/${productId}/${fileName}`;
+      const upload = await uploadToObjectStorage(objectKey, file.buffer, resolveContentType(ext));
+      if (upload.ok) {
+        cloudStatus = 'uploaded';
+        publicUrl = upload.publicUrl;
+        console.info(`[MaterialService] uploaded to object storage: ${objectKey}`);
+      } else {
+        console.warn(`[MaterialService] cloud upload failed, keeping local file: ${upload.reason}`);
+        cloudStatus = 'failed';
+      }
+    }
 
     const material: Material = {
       id,
@@ -104,15 +159,25 @@ export class MaterialService {
       tags,
       aiDescription: '',
       duration: type === 'video' ? 10 : undefined,
+      publicUrl,
+      cloudStatus,
       createdAt: new Date().toISOString(),
     };
 
     try {
       await prisma.material.create({
         data: {
-          ...material,
+          id: material.id,
+          productId: material.productId,
+          type: material.type,
+          fileUrl: material.fileUrl,
+          thumbnailUrl: material.thumbnailUrl ?? null,
+          title: material.title,
           tags: JSON.stringify(material.tags),
+          aiDescription: material.aiDescription ?? null,
           duration: material.duration ?? null,
+          publicUrl: material.publicUrl ?? null,
+          cloudStatus: material.cloudStatus ?? null,
         },
       });
     } catch (error) {

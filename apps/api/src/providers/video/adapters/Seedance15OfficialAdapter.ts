@@ -115,13 +115,24 @@ export class Seedance15OfficialAdapter {
     // Seedance 1.5 accepts one first-frame image. Multi-reference images are a Seedance 2.0 capability.
     const firstImage = input.materials.find(m => m.type === 'image');
     if (firstImage) {
-      const base64 = this.readImageBase64(firstImage.fileUrl);
-      if (base64) {
+      const publicUrl = firstImage.publicUrl?.trim();
+      if (publicUrl && this.isPublicHttpUrl(publicUrl)) {
         content.push({
           type: 'image_url',
-          image_url: { url: base64 },
+          image_url: { url: publicUrl },
           role: 'first_frame',
         });
+      } else if (process.env.SEEDANCE_ALLOW_BASE64_DEBUG === 'true') {
+        const base64 = this.readImageBase64(firstImage.fileUrl);
+        if (base64) {
+          content.push({
+            type: 'image_url',
+            image_url: { url: base64 },
+            role: 'first_frame',
+          });
+        }
+      } else if (publicUrl) {
+        console.warn('[Seedance] publicUrl is not a valid http(s) URL, skipping first_frame');
       }
     }
 
@@ -140,6 +151,14 @@ export class Seedance15OfficialAdapter {
       generate_audio: process.env.SEEDANCE_GENERATE_AUDIO === 'true',
       watermark: false,
     };
+  }
+
+  private isPublicHttpUrl(url: string): boolean {
+    if (!/^https?:\/\//i.test(url)) return false;
+    if (/\/uploads\//i.test(url) || url.includes('localhost') || url.includes('127.0.0.1')) {
+      return false;
+    }
+    return true;
   }
 
   private readImageBase64(fileUrl: string): string | null {
