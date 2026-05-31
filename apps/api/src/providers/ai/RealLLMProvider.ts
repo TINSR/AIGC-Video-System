@@ -141,6 +141,10 @@ ${materialInfo}
     const controller = new AbortController();
     const timeoutMs = Math.max(Number(process.env.REAL_LLM_TIMEOUT_MS) || 30_000, 1000);
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const maxTokens = Math.max(Number(process.env.REAL_LLM_MAX_TOKENS) || 4096, 256);
+    const doubaoOptions = this.config!.provider === 'volcengine-doubao'
+      ? { reasoning_effort: process.env.REAL_LLM_REASONING_EFFORT || 'minimal' }
+      : {};
     let response: Response;
     try {
       response = await fetch(`${this.config!.baseUrl}/chat/completions`, {
@@ -156,7 +160,9 @@ ${materialInfo}
             { role: 'user', content: userContent },
           ],
           temperature: 0.7,
+          max_tokens: maxTokens,
           response_format: { type: 'json_object' },
+          ...doubaoOptions,
         }),
         signal: controller.signal,
       });
@@ -203,8 +209,10 @@ Analyze the attached product images before writing the plan. Separate directly o
 
   private supportsImageUnderstanding(): boolean {
     if (!this.config) return false;
-    if (this.config.provider !== 'xiaomi-mimo') return false;
-    return this.config.model === 'mimo-v2.5' || this.config.model === 'mimo-v2-omni';
+    if (this.config.provider === 'xiaomi-mimo') {
+      return this.config.model === 'mimo-v2.5' || this.config.model === 'mimo-v2-omni';
+    }
+    return this.config.provider === 'volcengine-doubao';
   }
 
   private resolveImageUrl(material: Material): string | null {
