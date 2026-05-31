@@ -11,6 +11,7 @@ type MaterialRecord = {
   productId: string;
   type: string;
   fileUrl: string;
+  publicUrl: string | null;
   thumbnailUrl: string | null;
   title: string;
   tags: string;
@@ -19,7 +20,7 @@ type MaterialRecord = {
   createdAt: Date;
 };
 
-type EditableMaterialFields = Pick<Material, 'title' | 'tags' | 'aiDescription' | 'duration' | 'thumbnailUrl'>;
+type EditableMaterialFields = Pick<Material, 'title' | 'tags' | 'aiDescription' | 'duration' | 'thumbnailUrl' | 'publicUrl'>;
 
 function parseTags(raw: string): string[] {
   try {
@@ -36,6 +37,7 @@ function mapMaterial(record: MaterialRecord): Material {
     productId: record.productId,
     type: record.type as Material['type'],
     fileUrl: record.fileUrl,
+    publicUrl: record.publicUrl ?? undefined,
     thumbnailUrl: record.thumbnailUrl ?? undefined,
     title: record.title,
     tags: parseTags(record.tags),
@@ -52,6 +54,7 @@ function pickEditableFields(data: Partial<Material>): Partial<EditableMaterialFi
   if (typeof data.aiDescription === 'string') editable.aiDescription = data.aiDescription;
   if (typeof data.duration === 'number') editable.duration = data.duration;
   if (typeof data.thumbnailUrl === 'string') editable.thumbnailUrl = data.thumbnailUrl;
+  if (typeof data.publicUrl === 'string' || data.publicUrl === null) editable.publicUrl = data.publicUrl ?? undefined;
   return editable;
 }
 

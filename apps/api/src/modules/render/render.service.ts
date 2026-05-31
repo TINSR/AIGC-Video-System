@@ -419,6 +419,12 @@ export class RenderService {
       });
 
       if (seedanceResult.status === 'failed') {
+        if (!this.isFallbackAllowed()) {
+          this.makeFallbackDisabledError(task, seedanceResult.errorMessage || '分镜 Seedance 调用失败');
+          await syncTask(task);
+          await this.creativePlanService.updateScene(creativePlan.id, scene.id, { renderStatus: 'failed' });
+          return;
+        }
         task.logs.push(makeLog('warn', `分镜 Seedance 失败：${seedanceResult.errorMessage}，切换 FFmpeg 预览`));
         task.updatedAt = new Date().toISOString();
         await syncTask(task);

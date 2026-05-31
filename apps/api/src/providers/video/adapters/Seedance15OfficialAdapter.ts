@@ -145,12 +145,23 @@ export class Seedance15OfficialAdapter {
 
   private resolveFirstFrameUrl(material: { publicUrl?: string; fileUrl: string }): string | null {
     // 1. Prefer publicUrl (OSS/TOS public URL)
-    if (material.publicUrl && material.publicUrl.startsWith('http')) {
-      return material.publicUrl;
+    if (material.publicUrl) {
+      try {
+        const url = new URL(material.publicUrl);
+        if (url.protocol === 'https:' || url.protocol === 'http:') {
+          return material.publicUrl;
+        }
+      } catch {
+        // invalid URL, fall through
+      }
     }
 
-    // 2. Fallback to local base64
-    return this.readImageBase64(material.fileUrl);
+    // 2. Fallback to local base64 (only if explicitly allowed)
+    if (process.env.ALLOW_LOCAL_BASE64_FIRST_FRAME !== 'false') {
+      return this.readImageBase64(material.fileUrl);
+    }
+
+    return null;
   }
 
   private readImageBase64(fileUrl: string): string | null {
