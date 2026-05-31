@@ -2,10 +2,10 @@ import { ArrowRightOutlined, PlusOutlined } from "@ant-design/icons";
 import { Alert, Button, Col, Empty, Row, Space, Spin, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { CreativePlan, GenerationTask, Material, Product } from "@clipshop/shared";
+import type { CreativePlan, GenerationTask, Material, Product, WorkspaceCreativePlanSummary } from "@clipshop/shared";
 import { api, type WorkspaceTaskSummary } from "../services/api";
 
-type PlanMap = Record<string, CreativePlan[]>;
+type PlanMap = Record<string, Array<CreativePlan | WorkspaceCreativePlanSummary>>;
 type MaterialMap = Record<string, Material[]>;
 
 function taskStatusColor(status: GenerationTask["status"]) {
@@ -24,13 +24,13 @@ function latestByTime<T extends { createdAt: string; updatedAt?: string }>(items
 
 function nextActionLabel(action?: WorkspaceTaskSummary["nextAction"]) {
   const labels: Record<WorkspaceTaskSummary["nextAction"], string> = {
-    upload_materials: "上传素材",
+    upload_material: "上传素材",
     generate_plan: "生成方案",
     review_plan: "审核方案",
     render_video: "生成视频",
-    view_progress: "查看进度",
+    view_task: "查看进度",
     view_video: "查看成片",
-    retry_render: "查看失败原因 / 重试"
+    retry: "查看失败原因 / 重试"
   };
   return action ? labels[action] : undefined;
 }

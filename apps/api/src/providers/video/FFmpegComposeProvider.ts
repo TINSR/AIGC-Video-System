@@ -120,6 +120,13 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
     return null;
   }
 
+  private escapeSubtitleFilterPath(filePath: string): string {
+    return filePath
+      .replace(/\\/g, '/')
+      .replace(/:/g, '\\:')
+      .replace(/'/g, "\\'");
+  }
+
   // 生成纯色背景 + 字幕的兜底片段
   private async generateSolidColorClip(
     duration: number,
@@ -215,7 +222,8 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
           this.createSubtitleFile(clip.subtitle, clip.duration, subtitleFile);
 
           const subtitledOutput = path.join(this.tempDir, `clip_sub_${i}_${randomUUID()}.mp4`);
-          await execAsync(`${this.quotedFFmpegPath} -i "${tempOutput}" -vf subtitles="${subtitleFile.replace(/\\/g, '/')}" -c:a copy "${subtitledOutput}" -y`);
+          const subtitleFilterPath = this.escapeSubtitleFilterPath(subtitleFile);
+          await execAsync(`${this.quotedFFmpegPath} -i "${tempOutput}" -vf "subtitles='${subtitleFilterPath}'" -c:a copy "${subtitledOutput}" -y`);
 
           fs.unlinkSync(tempOutput);
           clipFiles.push(subtitledOutput);

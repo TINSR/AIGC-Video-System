@@ -2,11 +2,17 @@ import prisma from '../../config/prisma';
 import type { GenerationTask, TaskLog } from '@shared/types';
 
 const MAX_ERROR_MESSAGE_LENGTH = 190;
+const MAX_LOG_MESSAGE_LENGTH = 190;
 
 function truncateErrorMessage(message?: string): string | null {
   if (!message) return null;
   if (message.length <= MAX_ERROR_MESSAGE_LENGTH) return message;
   return `${message.slice(0, MAX_ERROR_MESSAGE_LENGTH - 3)}...`;
+}
+
+function truncateLogMessage(message: string): string {
+  if (message.length <= MAX_LOG_MESSAGE_LENGTH) return message;
+  return `${message.slice(0, MAX_LOG_MESSAGE_LENGTH - 3)}...`;
 }
 
 function mapDbTask(record: {
@@ -126,12 +132,12 @@ export async function persistTaskToDatabase(task: GenerationTask): Promise<void>
           id: latest.id,
           taskId: task.id,
           level: latest.level,
-          message: latest.message,
+          message: truncateLogMessage(latest.message),
           timestamp: new Date(latest.timestamp),
         },
         update: {
           level: latest.level,
-          message: latest.message,
+          message: truncateLogMessage(latest.message),
           timestamp: new Date(latest.timestamp),
         },
       });

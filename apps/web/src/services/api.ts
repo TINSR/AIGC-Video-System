@@ -5,7 +5,9 @@ import type {
   Material,
   Product,
   Scene,
-  ScriptStyle
+  ScriptStyle,
+  WorkspaceNextAction,
+  WorkspaceTaskItem
 } from "@clipshop/shared";
 import {
   analyticsOverview,
@@ -17,7 +19,7 @@ import {
 
 const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
-export const SCENE_PREVIEW_AVAILABLE = import.meta.env.VITE_ENABLE_SCENE_PREVIEW === "true";
+export const SCENE_PREVIEW_AVAILABLE = import.meta.env.VITE_ENABLE_SCENE_PREVIEW !== "false";
 
 function normalizeApiBaseUrl(value: string) {
   const trimmed = value.replace(/\/$/, "");
@@ -33,23 +35,7 @@ function normalizeApiBaseUrl(value: string) {
 
 const API_BASE_URL = normalizeApiBaseUrl(RAW_API_BASE_URL);
 
-export type WorkspaceNextAction =
-  | "upload_materials"
-  | "generate_plan"
-  | "review_plan"
-  | "render_video"
-  | "view_progress"
-  | "view_video"
-  | "retry_render";
-
-export type WorkspaceTaskSummary = {
-  product: Product;
-  materialsCount: number;
-  creativePlansCount: number;
-  latestPlan?: CreativePlan;
-  latestTask?: GenerationTask;
-  nextAction: WorkspaceNextAction;
-};
+export type WorkspaceTaskSummary = WorkspaceTaskItem;
 
 export function resolveAssetUrl(path?: string): string | undefined {
   if (!path) return undefined;
@@ -97,21 +83,21 @@ export const api = {
         ? latestTask.status === "success"
           ? "view_video"
           : latestTask.status === "failed"
-            ? "retry_render"
-            : "view_progress"
+            ? "retry"
+            : "view_task"
         : latestPlan
           ? latestPlan.status === "approved"
             ? "render_video"
             : "review_plan"
           : materialsCount > 0
             ? "generate_plan"
-            : "upload_materials";
+            : "upload_material";
 
       return {
         product,
         materialsCount,
         creativePlansCount: productPlans.length,
-        latestPlan,
+        latestPlan: latestPlan ? { ...latestPlan, scenesCount: latestPlan.scenes.length } : undefined,
         latestTask,
         nextAction
       };
@@ -245,7 +231,26 @@ export const api = {
   },
   async renderScenePreview(planId: string, sceneId: string): Promise<Scene> {
     if (!USE_MOCK) {
-      return request<Scene>(`/creative-plans/${planId}/scenes/${sceneId}/render`, { method: "POST" });
+      const task = await request<GenerationTask>(`/creative-plans/${planId}/scenes/${sceneId}/render`, {
+        method: "POST"
+      });
+      const timeoutAt = Date.now() + 10 * 60 * 1000;
+      let latestTask = task;
+
+      while (latestTask.status === "pending" || latestTask.status === "running") {
+        if (Date.now() >= timeoutAt) throw new Error("分镜预览等待超时，请稍后在任务列表中查看结果");
+        await wait(1500);
+        latestTask = await request<GenerationTask>(`/tasks/${task.id}`);
+      }
+
+      if (latestTask.status === "failed") {
+        throw new Error(latestTask.errorMessage || "分镜预览生成失败");
+      }
+
+      const plan = await request<CreativePlan>(`/creative-plans/${planId}`);
+      const scene = plan.scenes.find((item) => item.id === sceneId);
+      if (!scene) throw new Error("分镜预览已完成，但未找到对应分镜");
+      return scene;
     }
     await wait(500);
     const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];

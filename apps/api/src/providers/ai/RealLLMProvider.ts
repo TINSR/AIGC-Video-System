@@ -65,14 +65,8 @@ export class RealLLMProvider implements AiProvider {
       return this.fallback.generateCreativePlan(input);
     }
 
-    try {
-      const llmOutput = await this.callLLM(input);
-      return this.buildDraft(input, llmOutput);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn('[RealLLMProvider] LLM 调用失败，fallback 到 MockAiProvider:', message);
-      return this.fallback.generateCreativePlan(input);
-    }
+    const llmOutput = await this.callLLM(input);
+    return this.buildDraft(input, llmOutput);
   }
 
   async regenerateScene(input: SceneRegenerateInput): Promise<SceneDraft> {
@@ -130,22 +124,31 @@ ${materialInfo}
 风格偏好：${style || 'scenario'}
 最大时长：${maxDuration || 15} 秒`;
 
-    const response = await fetch(`${this.config!.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.config!.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.config!.model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.7,
-        response_format: { type: 'json_object' },
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutMs = Math.max(Number(process.env.REAL_LLM_TIMEOUT_MS) || 30_000, 1000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(`${this.config!.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config!.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.config!.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.7,
+          response_format: { type: 'json_object' },
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       const text = await response.text();
@@ -266,7 +269,8 @@ ${materialInfo}
     };
 
     const scenes: SceneDraft[] = llm.scenes.map(s => {
-      const materialId = s.materialId || this.pickMaterial(s.order - 1, imageMaterials, videoMaterials);
+      const requestedMaterial = input.materials.find(m => m.id === s.materialId);
+      const materialId = requestedMaterial?.id || this.pickMaterial(s.order - 1, imageMaterials, videoMaterials);
       const materialUsage = materialId
         ? (input.materials.find(m => m.id === materialId)?.type === 'video' ? 'source_clip' as const : 'reference_image' as const)
         : (input.materials.length > 0 ? 'reference_image' as const : 'prompt_only' as const);

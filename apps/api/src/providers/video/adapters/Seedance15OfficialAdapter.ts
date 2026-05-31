@@ -112,14 +112,15 @@ export class Seedance15OfficialAdapter {
   private buildCreateTaskBody(input: SeedanceRenderInput): Record<string, unknown> {
     const content: Array<Record<string, unknown>> = [];
 
-    // Add image references from materials
-    const imageMaterials = input.materials.filter(m => m.type === 'image');
-    for (const img of imageMaterials.slice(0, 3)) { // Max 3 images
-      const base64 = this.readImageBase64(img.fileUrl);
+    // Seedance 1.5 accepts one first-frame image. Multi-reference images are a Seedance 2.0 capability.
+    const firstImage = input.materials.find(m => m.type === 'image');
+    if (firstImage) {
+      const base64 = this.readImageBase64(firstImage.fileUrl);
       if (base64) {
         content.push({
           type: 'image_url',
           image_url: { url: base64 },
+          role: 'first_frame',
         });
       }
     }
@@ -143,10 +144,18 @@ export class Seedance15OfficialAdapter {
 
   private readImageBase64(fileUrl: string): string | null {
     try {
-      // fileUrl is like /uploads/xxx.jpg, convert to local path
-      const uploadDir = process.env.UPLOAD_DIR || './uploads';
-      const fileName = fileUrl.replace('/uploads/', '');
-      const filePath = path.join(uploadDir, fileName);
+      if (!/^\/uploads\/[^/\\]+$/.test(fileUrl)) {
+        console.warn('[Seedance] Ignore unsafe local material URL');
+        return null;
+      }
+
+      const uploadDir = path.resolve(process.env.UPLOAD_DIR || './uploads');
+      const fileName = path.basename(fileUrl);
+      const filePath = path.resolve(uploadDir, fileName);
+      if (!filePath.startsWith(`${uploadDir}${path.sep}`)) {
+        console.warn('[Seedance] Ignore local material path outside upload directory');
+        return null;
+      }
 
       if (!fs.existsSync(filePath)) {
         return null;

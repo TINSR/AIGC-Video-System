@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { CreativePlanService } from './creativePlan.service';
 import { RenderService } from '../render/render.service';
 import { MaterialService } from '../materials/material.service';
+import * as productService from '../products/product.service';
 import { planStore } from '../../memory-store';
 import type { ApiResponse, CreativePlan, Product, Material, Scene, GenerationTask } from '@shared/types';
 
@@ -64,11 +65,30 @@ export class CreativePlanController {
       const { productId } = req.params;
       const { style, maxDuration } = req.body;
 
-      const product = productId === demoProduct.id ? demoProduct : { ...demoProduct, id: productId };
+      let product = productId === demoProduct.id ? demoProduct : { ...demoProduct, id: productId };
+      try {
+        const storedProduct = await productService.getProductById(productId);
+        if (storedProduct) {
+          product = {
+            id: storedProduct.id,
+            title: storedProduct.title,
+            category: storedProduct.category,
+            sellingPoints: storedProduct.sellingPoints,
+            targetAudience: storedProduct.targetAudience,
+            usageScene: storedProduct.usageScene,
+            createdAt: storedProduct.createdAt.toISOString(),
+          };
+        }
+      } catch (error) {
+        console.warn('[CreativePlanController] product database read failed, using demo fallback:', error);
+      }
+
+      const storedMaterials = await this.materialService.listByProductId(productId);
+      const materials = storedMaterials.length > 0 ? storedMaterials : productId === demoProduct.id ? demoMaterials : [];
 
       const creativePlan = await this.creativePlanService.generateCreativePlan({
         product,
-        materials: demoMaterials,
+        materials,
         style,
         maxDuration,
       });
@@ -210,7 +230,7 @@ export class CreativePlanController {
       const { id, sceneId } = req.params;
       const { modifyRequest } = req.body;
 
-      const creativePlan = planStore.get(id);
+      const creativePlan = await this.creativePlanService.getCreativePlan(id);
       if (!creativePlan) {
         return res.status(404).json({
           success: false,
@@ -221,10 +241,14 @@ export class CreativePlanController {
         });
       }
 
+      const storedMaterials = await this.materialService.listByProductId(creativePlan.productId);
+      const materials = storedMaterials.length > 0
+        ? storedMaterials
+        : creativePlan.productId === demoProduct.id ? demoMaterials : [];
       const scene = await this.creativePlanService.regenerateScene({
         creativePlan,
         sceneId,
-        materials: demoMaterials,
+        materials,
         modifyRequest,
       });
 
