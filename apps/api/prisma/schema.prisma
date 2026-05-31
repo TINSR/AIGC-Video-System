@@ -8,14 +8,14 @@ datasource db {
 }
 
 model Product {
-  id             String     @id @default(cuid())
+  id             String           @id @default(cuid())
   title          String
   category       String
   sellingPoints  String
   targetAudience String
   usageScene     String
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
   materials      Material[]
   creativePlans  CreativePlan[]
   tasks          GenerationTask[]
@@ -26,44 +26,45 @@ model Material {
   productId     String
   type          String
   fileUrl       String
-  publicUrl     String?
   thumbnailUrl  String?
   title         String
   tags          String
   aiDescription String?
   duration      Float?
+  publicUrl     String?  @db.Text
+  cloudStatus   String? // uploaded | local_only | failed
   createdAt     DateTime @default(now())
   product       Product  @relation(fields: [productId], references: [id])
 }
 
 model CreativePlan {
-  id                  String   @id @default(cuid())
-  productId           String
-  status              String
-  style               String
-  title               String
-  hook                String
-  adCopy              String   @db.Text
-  cta                 String
-  visualBible         Json
-  complianceWarnings  Json?
-  continuityWarnings  Json?
-  promptTrace         Json?
-  stage               String?
-  renderMode          String?
-  agentTrace          Json?
-  strategyId          String?
-  version             Int?
-  parentPlanId        String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  product             Product  @relation(fields: [productId], references: [id])
-  tasks               GenerationTask[]
-  scenes              Scene[]
+  id                 String           @id @default(cuid())
+  productId          String
+  status             String
+  style              String
+  title              String
+  hook               String
+  adCopy             String           @db.Text
+  cta                String
+  visualBible        Json
+  complianceWarnings Json?
+  continuityWarnings Json?
+  promptTrace        Json?
+  stage              String?
+  renderMode         String?
+  agentTrace         Json?
+  strategyId         String?
+  version            Int?
+  parentPlanId       String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  product            Product          @relation(fields: [productId], references: [id])
+  tasks              GenerationTask[]
+  scenes             Scene[]
 }
 
 model Scene {
-  id                String @id @default(cuid())
+  id                String       @id @default(cuid())
   creativePlanId    String
   order             Int
   duration          Float
@@ -71,7 +72,7 @@ model Scene {
   subtitle          String
   voiceover         String
   materialId        String?
-  seedancePrompt    String @db.Text
+  seedancePrompt    String       @db.Text
   warnings          Json?
   transition        String
   goal              String?
@@ -83,30 +84,30 @@ model Scene {
 }
 
 model GenerationTask {
-  id             String    @id @default(cuid())
+  id             String       @id @default(cuid())
   productId      String
   creativePlanId String
   status         String
-  progress       Int       @default(0)
+  progress       Int          @default(0)
   currentStep    String
-  provider       String    @default("seedance_1_5")
+  provider       String       @default("seedance_1_5")
   outputVideoUrl String?
   errorMessage   String?
   type           String?
   resultId       String?
   renderMode     String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  product        Product   @relation(fields: [productId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  product        Product      @relation(fields: [productId], references: [id])
   creativePlan   CreativePlan @relation(fields: [creativePlanId], references: [id])
   logs           TaskLog[]
 }
 
 model TaskLog {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   taskId    String
   level     String
   message   String
-  timestamp DateTime @default(now())
+  timestamp DateTime       @default(now())
   task      GenerationTask @relation(fields: [taskId], references: [id])
 }

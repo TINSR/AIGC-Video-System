@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
+import { isFfmpegFallbackAllowed, FFMPEG_FALLBACK_DISABLED_MESSAGE } from '../../config/ffmpegFallback';
 import { Seedance15Provider } from '../../providers/video/Seedance15Provider';
 import { FFmpegComposeProvider } from '../../providers/video/FFmpegComposeProvider';
 import { taskStore, planStore, taskMaterialsStore } from '../../memory-store';
@@ -39,25 +40,65 @@ export class RenderService {
   private seedanceProvider: Seedance15Provider;
   private ffmpegProvider: FFmpegComposeProvider;
   private creativePlanService: CreativePlanService;
-  private allowFFmpegFallback: boolean;
 
   constructor() {
     this.seedanceProvider = new Seedance15Provider();
     this.ffmpegProvider = new FFmpegComposeProvider();
     this.creativePlanService = new CreativePlanService();
-    this.allowFFmpegFallback = process.env.ALLOW_FFMPEG_FALLBACK !== 'false';
   }
 
-  private isFallbackAllowed(): boolean {
-    return this.allowFFmpegFallback;
-  }
-
-  private makeFallbackDisabledError(task: GenerationTask, reason: string): void {
+  private async failSeedanceWithoutFallback(task: GenerationTask, reason: string): Promise<void> {
     task.status = 'failed';
-    task.errorMessage = `Seedance 失败且 FFmpeg fallback 已关闭：${reason}`;
-    task.currentStep = '生成失败（生产严格模式，不允许 fallback）';
+    task.provider = 'seedance_1_5';
+    task.errorMessage = `${reason}。${FFMPEG_FALLBACK_DISABLED_MESSAGE}`;
+    task.currentStep = 'Seedance 不可用，生产模式未启用 FFmpeg 兜底';
     task.logs.push(makeLog('error', task.errorMessage));
     task.updatedAt = new Date().toISOString();
+    await syncTask(task);
+  }
+
+  private async fallbackToFullFfmpeg(
+    task: GenerationTask,
+    creativePlan: CreativePlan,
+    materials: Material[],
+    reason: string,
+    stepLabel: string
+  ): Promise<void> {
+    if (!isFfmpegFallbackAllowed()) {
+      await this.failSeedanceWithoutFallback(task, reason);
+      return;
+    }
+
+    task.provider = 'ffmpeg_fallback';
+    task.progress = 30;
+    task.currentStep = stepLabel;
+    task.logs.push(makeLog('warn', `${reason}，切换到 FFmpeg 兜底`));
+    task.updatedAt = new Date().toISOString();
+    await syncTask(task);
+    await this.renderWithFFmpeg(task, creativePlan, materials);
+  }
+
+  private async fallbackToSceneFfmpeg(
+    task: GenerationTask,
+    creativePlan: CreativePlan,
+    scene: Scene,
+    materials: Material[],
+    reason: string,
+    outputBasename: string,
+    outputUrl: string
+  ): Promise<void> {
+    if (!isFfmpegFallbackAllowed()) {
+      await this.failSeedanceWithoutFallback(task, reason);
+      await this.creativePlanService.updateScene(creativePlan.id, scene.id, {
+        renderStatus: 'failed',
+      });
+      return;
+    }
+
+    task.logs.push(makeLog('warn', `${reason}，切换 FFmpeg 预览`));
+    task.updatedAt = new Date().toISOString();
+    await syncTask(task);
+    await this.renderSceneWithFFmpeg(task, creativePlan, scene, materials, outputBasename, outputUrl);
   }
 
   // 创建渲染任务
@@ -130,19 +171,13 @@ export class RenderService {
       });
 
       if (seedanceResult.status === 'failed') {
-        if (!this.isFallbackAllowed()) {
-          this.makeFallbackDisabledError(task, seedanceResult.errorMessage || 'Seedance 调用失败');
-          await syncTask(task);
-          return;
-        }
-        task.provider = 'ffmpeg_fallback';
-        task.progress = 30;
-        task.currentStep = 'Seedance 调用失败，切换到 FFmpeg 兜底合成';
-        task.logs.push(makeLog('warn', `Seedance 失败：${seedanceResult.errorMessage}，切换到 FFmpeg 兜底`));
-        task.updatedAt = new Date().toISOString();
-        await syncTask(task);
-
-        await this.renderWithFFmpeg(task, creativePlan, materials);
+        await this.fallbackToFullFfmpeg(
+          task,
+          creativePlan,
+          materials,
+          `Seedance 失败：${seedanceResult.errorMessage}`,
+          'Seedance 调用失败，切换到 FFmpeg 兜底合成'
+        );
       } else {
         task.progress = 25;
         task.currentStep = STEP_MAP[25];
@@ -220,34 +255,22 @@ export class RenderService {
           return;
         }
 
-        if (!this.isFallbackAllowed()) {
-          this.makeFallbackDisabledError(task, 'Seedance 成功但未返回 videoUrl');
-          await syncTask(task);
-          return;
-        }
-        task.provider = 'ffmpeg_fallback';
-        task.progress = 30;
-        task.currentStep = 'Seedance 生成完成但未返回视频 URL，切换到 FFmpeg 兜底合成';
-        task.logs.push(makeLog('warn', 'Seedance 生成完成但未返回 videoUrl，切换到 FFmpeg 兜底'));
-        task.updatedAt = new Date().toISOString();
-        await syncTask(task);
-
-        await this.renderWithFFmpeg(task, creativePlan, materials);
+        await this.fallbackToFullFfmpeg(
+          task,
+          creativePlan,
+          materials,
+          'Seedance 生成完成但未返回 videoUrl',
+          'Seedance 生成完成但未返回视频 URL，切换到 FFmpeg 兜底合成'
+        );
         return;
       } else if (status.status === 'failed') {
-        if (!this.isFallbackAllowed()) {
-          this.makeFallbackDisabledError(task, status.errorMessage || 'Seedance 任务失败');
-          await syncTask(task);
-          return;
-        }
-        task.provider = 'ffmpeg_fallback';
-        task.progress = 30;
-        task.currentStep = 'Seedance 生成失败，切换到 FFmpeg 兜底合成';
-        task.logs.push(makeLog('warn', `Seedance 生成失败：${status.errorMessage}，切换到 FFmpeg 兜底`));
-        task.updatedAt = new Date().toISOString();
-        await syncTask(task);
-
-        await this.renderWithFFmpeg(task, creativePlan, materials);
+        await this.fallbackToFullFfmpeg(
+          task,
+          creativePlan,
+          materials,
+          `Seedance 生成失败：${status.errorMessage}`,
+          'Seedance 生成失败，切换到 FFmpeg 兜底合成'
+        );
         return;
       }
 
@@ -258,20 +281,13 @@ export class RenderService {
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
     }
 
-    if (!this.isFallbackAllowed()) {
-      this.makeFallbackDisabledError(task, 'Seedance 生成超时');
-      await syncTask(task);
-      return;
-    }
-
-    task.provider = 'ffmpeg_fallback';
-    task.progress = 30;
-    task.currentStep = 'Seedance 生成超时，切换到 FFmpeg 兜底合成';
-    task.logs.push(makeLog('warn', 'Seedance 生成超时，切换到 FFmpeg 兜底'));
-    task.updatedAt = new Date().toISOString();
-    await syncTask(task);
-
-    await this.renderWithFFmpeg(task, creativePlan, materials);
+    await this.fallbackToFullFfmpeg(
+      task,
+      creativePlan,
+      materials,
+      'Seedance 生成超时',
+      'Seedance 生成超时，切换到 FFmpeg 兜底合成'
+    );
   }
 
   // 使用FFmpeg兜底合成
@@ -419,16 +435,15 @@ export class RenderService {
       });
 
       if (seedanceResult.status === 'failed') {
-        if (!this.isFallbackAllowed()) {
-          this.makeFallbackDisabledError(task, seedanceResult.errorMessage || '分镜 Seedance 调用失败');
-          await syncTask(task);
-          await this.creativePlanService.updateScene(creativePlan.id, scene.id, { renderStatus: 'failed' });
-          return;
-        }
-        task.logs.push(makeLog('warn', `分镜 Seedance 失败：${seedanceResult.errorMessage}，切换 FFmpeg 预览`));
-        task.updatedAt = new Date().toISOString();
-        await syncTask(task);
-        await this.renderSceneWithFFmpeg(task, creativePlan, scene, materials, outputBasename, outputUrl);
+        await this.fallbackToSceneFfmpeg(
+          task,
+          creativePlan,
+          scene,
+          materials,
+          `分镜 Seedance 失败：${seedanceResult.errorMessage}`,
+          outputBasename,
+          outputUrl
+        );
         return;
       }
 
@@ -513,16 +528,15 @@ export class RenderService {
       }
 
       if (status.status === 'failed') {
-        if (!this.isFallbackAllowed()) {
-          this.makeFallbackDisabledError(task, status.errorMessage || '分镜 Seedance 任务失败');
-          await syncTask(task);
-          await this.creativePlanService.updateScene(creativePlan.id, scene.id, { renderStatus: 'failed' });
-          return;
-        }
-        task.logs.push(makeLog('warn', `分镜 Seedance 失败：${status.errorMessage}，切换 FFmpeg`));
-        task.updatedAt = new Date().toISOString();
-        await syncTask(task);
-        await this.renderSceneWithFFmpeg(task, creativePlan, scene, materials, outputBasename, outputUrl);
+        await this.fallbackToSceneFfmpeg(
+          task,
+          creativePlan,
+          scene,
+          materials,
+          `分镜 Seedance 失败：${status.errorMessage}`,
+          outputBasename,
+          outputUrl
+        );
         return;
       }
 
@@ -532,17 +546,15 @@ export class RenderService {
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
 
-    if (!this.isFallbackAllowed()) {
-      this.makeFallbackDisabledError(task, '分镜 Seedance 生成超时');
-      await syncTask(task);
-      await this.creativePlanService.updateScene(creativePlan.id, scene.id, { renderStatus: 'failed' });
-      return;
-    }
-
-    task.logs.push(makeLog('warn', '分镜 Seedance 超时，切换 FFmpeg 预览'));
-    task.updatedAt = new Date().toISOString();
-    await syncTask(task);
-    await this.renderSceneWithFFmpeg(task, creativePlan, scene, materials, outputBasename, outputUrl);
+    await this.fallbackToSceneFfmpeg(
+      task,
+      creativePlan,
+      scene,
+      materials,
+      '分镜 Seedance 超时',
+      outputBasename,
+      outputUrl
+    );
   }
 
   private async renderSceneWithFFmpeg(

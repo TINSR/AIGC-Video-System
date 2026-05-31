@@ -112,21 +112,31 @@ export class Seedance15OfficialAdapter {
   private buildCreateTaskBody(input: SeedanceRenderInput): Record<string, unknown> {
     const content: Array<Record<string, unknown>> = [];
 
-    // Seedance 1.5 only accepts one first-frame image.
-    // Prefer publicUrl (OSS/TOS), fallback to local base64, then pure prompt.
+    // Seedance 1.5 accepts one first-frame image. Multi-reference images are a Seedance 2.0 capability.
     const sceneMaterialId = input.scenes.find(scene => scene.materialId)?.materialId;
     const sceneImage = sceneMaterialId
       ? input.materials.find(material => material.id === sceneMaterialId && material.type === 'image')
       : undefined;
     const firstImage = sceneImage || input.materials.find(material => material.type === 'image');
     if (firstImage) {
-      const imageUrl = this.resolveFirstFrameUrl(firstImage);
-      if (imageUrl) {
+      const publicUrl = firstImage.publicUrl?.trim();
+      if (publicUrl && this.isPublicHttpUrl(publicUrl)) {
         content.push({
           type: 'image_url',
-          image_url: { url: imageUrl },
+          image_url: { url: publicUrl },
           role: 'first_frame',
         });
+      } else if (process.env.SEEDANCE_ALLOW_BASE64_DEBUG === 'true') {
+        const base64 = this.readImageBase64(firstImage.fileUrl);
+        if (base64) {
+          content.push({
+            type: 'image_url',
+            image_url: { url: base64 },
+            role: 'first_frame',
+          });
+        }
+      } else if (publicUrl) {
+        console.warn('[Seedance] publicUrl is not a valid http(s) URL, skipping first_frame');
       }
     }
 
@@ -147,25 +157,27 @@ export class Seedance15OfficialAdapter {
     };
   }
 
-  private resolveFirstFrameUrl(material: { publicUrl?: string; fileUrl: string }): string | null {
-    // 1. Prefer publicUrl (OSS/TOS public URL)
-    if (material.publicUrl) {
-      try {
-        const url = new URL(material.publicUrl);
-        if (url.protocol === 'https:' || url.protocol === 'http:') {
-          return material.publicUrl;
-        }
-      } catch {
-        // invalid URL, fall through
+  private isPublicHttpUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      const hostname = parsed.hostname.toLowerCase();
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+      if (/\/uploads\//i.test(parsed.pathname)) return false;
+      if (
+        hostname === 'localhost'
+        || hostname === '0.0.0.0'
+        || hostname === '::1'
+        || hostname === '127.0.0.1'
+        || hostname.startsWith('10.')
+        || hostname.startsWith('192.168.')
+        || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+      ) {
+        return false;
       }
+      return true;
+    } catch {
+      return false;
     }
-
-    // 2. Fallback to local base64 (only if explicitly allowed)
-    if (process.env.ALLOW_LOCAL_BASE64_FIRST_FRAME === 'true') {
-      return this.readImageBase64(material.fileUrl);
-    }
-
-    return null;
   }
 
   private readImageBase64(fileUrl: string): string | null {
