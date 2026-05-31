@@ -7,11 +7,22 @@ import { TaskProgressTimeline } from "../components/TaskProgressTimeline";
 import { api, resolveAssetUrl } from "../services/api";
 
 const terminalStatuses = new Set(["success", "failed"]);
+const fallbackDisabledMessage = "当前为生产严格模式，FFmpeg fallback 已关闭。";
+
+const providerCopy: Record<GenerationTask["provider"], { text: string; color: string; alertType: "success" | "warning" }> = {
+  seedance_1_5: { text: "Seedance 真实生成", color: "green", alertType: "success" },
+  ffmpeg_fallback: { text: "FFmpeg 演示兜底", color: "gold", alertType: "warning" }
+};
 
 function formatElapsed(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return minutes > 0 ? `${minutes} 分 ${rest} 秒` : `${rest} 秒`;
+}
+
+function isFallbackDisabledError(message?: string) {
+  if (!message) return false;
+  return /fallback/i.test(message) && /(关闭|禁用|disabled|strict|ALLOW_FFMPEG_FALLBACK)/i.test(message);
 }
 
 export function TaskPage() {
@@ -80,6 +91,8 @@ export function TaskPage() {
   const elapsedSeconds = task?.createdAt ? Math.max(0, Math.floor((now - Date.parse(task.createdAt)) / 1000)) : 0;
   const waiting = !!task && !terminalStatuses.has(task.status);
   const latestLog = task?.logs?.[task.logs.length - 1];
+  const provider = task ? providerCopy[task.provider] : undefined;
+  const fallbackDisabled = isFallbackDisabledError(error) || isFallbackDisabledError(task?.errorMessage);
 
   return (
     <Space direction="vertical" size={20} className="full-width">
@@ -104,6 +117,10 @@ export function TaskPage() {
           )}
         </Space>
       </section>
+      {provider ? (
+        <Alert type={provider.alertType} showIcon message={`当前为 ${provider.text}`} />
+      ) : null}
+      {fallbackDisabled ? <Alert type="warning" showIcon message={fallbackDisabledMessage} /> : null}
       {error ? <Alert type="error" showIcon message={error} /> : null}
       {task?.errorMessage ? <Alert type="error" showIcon message={task.errorMessage} /> : null}
       {waiting ? (
@@ -126,7 +143,12 @@ export function TaskPage() {
               <Descriptions.Item label="progress">{task.progress}%</Descriptions.Item>
               <Descriptions.Item label="已等待">{formatElapsed(elapsedSeconds)}</Descriptions.Item>
               <Descriptions.Item label="currentStep">{task.currentStep}</Descriptions.Item>
-              <Descriptions.Item label="provider">{task.provider}</Descriptions.Item>
+              <Descriptions.Item label="provider">
+                <Space wrap>
+                  <Typography.Text>{task.provider}</Typography.Text>
+                  <Tag color={provider?.color}>{provider?.text}</Tag>
+                </Space>
+              </Descriptions.Item>
               <Descriptions.Item label="outputVideoUrl">
                 {resolvedOutputUrl ? (
                   <a href={resolvedOutputUrl} target="_blank" rel="noreferrer">
