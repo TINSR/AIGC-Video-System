@@ -63,6 +63,7 @@ export function StrategyReviewPanel({ plan, productName }: Props) {
   const strategy = inferStrategy(plan, productName);
   const traces = buildTrace(plan);
   const stage = plan.stage ?? (plan.status === "approved" ? "approved" : "storyboard_review");
+  const hasRealAgentTrace = Boolean(plan.agentTrace?.length || plan.creativeStrategy?.agentTrace?.length);
 
   return (
     <section className="surface strategy-review">
@@ -82,7 +83,11 @@ export function StrategyReviewPanel({ plan, productName }: Props) {
       <Alert
         type="info"
         showIcon
-        message="当前先以 CreativePlan 推导策略摘要；后端返回 CreativeStrategy 后会自动优先展示真实字段。"
+        message={
+          hasRealAgentTrace
+            ? "已展示后端返回的 Agent 摘要；页面只展示 summary 和 warnings，不展示原始 prompt、模型内部推理或密钥。"
+            : "暂无真实 agentTrace，当前使用 CreativePlan 字段推导摘要；页面不会展示原始 prompt 或模型内部推理。"
+        }
       />
 
       <Descriptions column={{ xs: 1, md: 2 }} size="small" className="strategy-descriptions">

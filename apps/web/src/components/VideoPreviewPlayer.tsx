@@ -30,7 +30,7 @@ export function VideoPreviewPlayer({ videoUrl }: Props) {
           showIcon
           type="warning"
           message="视频预览加载失败"
-          description="可以先使用打开视频或下载成片确认资源；如果仍无法访问，请检查后端静态资源、远程 Seedance URL 或 /outputs 路径配置。"
+          description="视频链接可能已过期，请重新生成或联系后端重新下载。也可以先使用打开视频或下载成片确认资源。"
         />
       ) : (
         <Empty description="暂无成片，任务成功后将在这里预览 mp4。" />

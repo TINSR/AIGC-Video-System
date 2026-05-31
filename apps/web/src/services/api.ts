@@ -15,8 +15,41 @@ import {
   products
 } from "../data/mockData";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
+export const SCENE_PREVIEW_AVAILABLE = import.meta.env.VITE_ENABLE_SCENE_PREVIEW === "true";
+
+function normalizeApiBaseUrl(value: string) {
+  const trimmed = value.replace(/\/$/, "");
+  if (/^https?:\/\//i.test(trimmed)) {
+    const url = new URL(trimmed);
+    if (url.pathname === "" || url.pathname === "/") url.pathname = "/api";
+    return url.toString().replace(/\/$/, "");
+  }
+  if (trimmed === "") return "/api";
+  if (trimmed === "/") return "/api";
+  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+}
+
+const API_BASE_URL = normalizeApiBaseUrl(RAW_API_BASE_URL);
+
+export type WorkspaceNextAction =
+  | "upload_materials"
+  | "generate_plan"
+  | "review_plan"
+  | "render_video"
+  | "view_progress"
+  | "view_video"
+  | "retry_render";
+
+export type WorkspaceTaskSummary = {
+  product: Product;
+  materialsCount: number;
+  creativePlansCount: number;
+  latestPlan?: CreativePlan;
+  latestTask?: GenerationTask;
+  nextAction: WorkspaceNextAction;
+};
 
 export function resolveAssetUrl(path?: string): string | undefined {
   if (!path) return undefined;
@@ -38,7 +71,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init
   });
   const payload = await response.json().catch(() => undefined);
-  if (!response.ok || !payload?.success) {
+  if (!response.ok) {
+    throw new Error(payload?.error?.message ?? `请求失败：${response.status}`);
+  }
+  if (payload?.success === undefined) return payload as T;
+  if (!payload.success) {
     throw new Error(payload?.error?.message ?? `请求失败：${response.status}`);
   }
   return payload.data as T;
@@ -47,6 +84,39 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const wait = (ms = 180) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export const api = {
+  async getWorkspaceTasks(): Promise<WorkspaceTaskSummary[]> {
+    if (!USE_MOCK) return request<WorkspaceTaskSummary[]>("/workspace/tasks");
+    await wait();
+    return products.map((product) => {
+      const productPlans = creativePlans.filter((plan) => plan.productId === product.id);
+      const productTasks = generationTasks.filter((task) => task.productId === product.id);
+      const latestPlan = productPlans[0];
+      const latestTask = productTasks[0];
+      const materialsCount = materials.filter((material) => material.productId === product.id).length;
+      const nextAction: WorkspaceNextAction = latestTask
+        ? latestTask.status === "success"
+          ? "view_video"
+          : latestTask.status === "failed"
+            ? "retry_render"
+            : "view_progress"
+        : latestPlan
+          ? latestPlan.status === "approved"
+            ? "render_video"
+            : "review_plan"
+          : materialsCount > 0
+            ? "generate_plan"
+            : "upload_materials";
+
+      return {
+        product,
+        materialsCount,
+        creativePlansCount: productPlans.length,
+        latestPlan,
+        latestTask,
+        nextAction
+      };
+    });
+  },
   async getProducts(): Promise<Product[]> {
     if (!USE_MOCK) return request<Product[]>("/products");
     await wait();
@@ -169,6 +239,21 @@ export const api = {
       subtitle: `${scene.subtitle} / 已优化`,
       voiceover: `${scene.voiceover} 现在突出一个更清晰的购买理由。`,
       seedancePrompt: `${scene.seedancePrompt}, refreshed ecommerce short-video copy, clearer product focus`
+    };
+    plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
+    return updated;
+  },
+  async renderScenePreview(planId: string, sceneId: string): Promise<Scene> {
+    if (!USE_MOCK) {
+      return request<Scene>(`/creative-plans/${planId}/scenes/${sceneId}/render`, { method: "POST" });
+    }
+    await wait(500);
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
+    const updated: Scene = {
+      ...scene,
+      previewVideoUrl: "/outputs/mock-scene-preview.mp4",
+      renderStatus: "success"
     };
     plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
     return updated;
