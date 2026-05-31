@@ -13,6 +13,8 @@ export type Material = {
   productId: string;
   type: "image" | "video";
   fileUrl: string;
+  publicUrl?: string;
+  cloudStatus?: "uploaded" | "local_only" | "failed";
   thumbnailUrl?: string;
   title: string;
   tags: string[];
