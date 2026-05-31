@@ -1,7 +1,7 @@
 import { Alert, Button, Col, Row, Space, Tag, Typography, message } from "antd";
 import { useState } from "react";
 import type { CreativePlan, Material, Scene } from "@clipshop/shared";
-import { api } from "../services/api";
+import { SCENE_PREVIEW_AVAILABLE, api } from "../services/api";
 import { ComplianceWarningList } from "./ComplianceWarningList";
 import { SceneTimelinePanel } from "./SceneTimelinePanel";
 import { ScriptResultPanel } from "./ScriptResultPanel";
@@ -25,6 +25,7 @@ export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) 
   const [dirty, setDirty] = useState(false);
   const [savingTimeline, setSavingTimeline] = useState(false);
   const [regeneratingSceneId, setRegeneratingSceneId] = useState<string>();
+  const [renderingPreviewSceneId, setRenderingPreviewSceneId] = useState<string>();
   const [approving, setApproving] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState<string>();
@@ -131,6 +132,30 @@ export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) 
     }
   };
 
+  const renderScenePreview = async (sceneId: string) => {
+    setError(undefined);
+    setRenderingPreviewSceneId(sceneId);
+    try {
+      if (dirty) await saveTimeline(false);
+      setScenes((current) =>
+        current.map((scene) => (scene.id === sceneId ? { ...scene, renderStatus: "running" } : scene))
+      );
+      const updatedScene = await api.renderScenePreview(currentPlan.id, sceneId);
+      setScenes((current) => normalizeScenes(current.map((scene) => (scene.id === sceneId ? updatedScene : scene))));
+      setDirty(false);
+      message.success("分镜预览生成任务已提交");
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "分镜预览生成失败";
+      setScenes((current) =>
+        current.map((scene) => (scene.id === sceneId ? { ...scene, renderStatus: "failed" } : scene))
+      );
+      setError(messageText);
+      message.error(messageText);
+    } finally {
+      setRenderingPreviewSceneId(undefined);
+    }
+  };
+
   return (
     <Space direction="vertical" size={20} className="full-width">
       <section className="section-heading">
@@ -191,10 +216,13 @@ export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) 
           dirty={dirty}
           saving={savingTimeline}
           regeneratingSceneId={regeneratingSceneId}
+          renderingPreviewSceneId={renderingPreviewSceneId}
+          scenePreviewAvailable={SCENE_PREVIEW_AVAILABLE}
           onChange={updateSceneDraft}
           onMove={moveScene}
           onSave={() => void saveTimeline()}
           onRegenerate={regenerateScene}
+          onRenderPreview={renderScenePreview}
         />
       ) : (
         <Alert type="warning" showIcon message="当前方案还没有分镜。" />

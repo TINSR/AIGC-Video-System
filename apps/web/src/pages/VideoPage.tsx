@@ -1,6 +1,6 @@
-import { Alert, Button, Col, Descriptions, Row, Space, Spin, Tag, Typography } from "antd";
+import { Alert, Button, Col, Descriptions, Row, Space, Spin, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { GenerationTask } from "@clipshop/shared";
 import { AnalyticsMetricCard } from "../components/AnalyticsMetricCard";
 import { VideoPreviewPlayer } from "../components/VideoPreviewPlayer";
@@ -8,8 +8,10 @@ import { api, resolveAssetUrl } from "../services/api";
 
 export function VideoPage() {
   const { videoId = "task_001" } = useParams();
+  const navigate = useNavigate();
   const [task, setTask] = useState<GenerationTask>();
   const [loading, setLoading] = useState(true);
+  const [rerendering, setRerendering] = useState(false);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -37,6 +39,24 @@ export function VideoPage() {
   if (loading) return <Spin fullscreen />;
 
   const resolvedOutputUrl = resolveAssetUrl(task?.outputVideoUrl);
+  const mayHaveExpiredUrl = !!task?.outputVideoUrl && !resolvedOutputUrl;
+
+  const handleRerender = async () => {
+    if (!task) return;
+    setRerendering(true);
+    setError(undefined);
+    try {
+      const nextTask = await api.renderPlan(task.creativePlanId);
+      message.success("已重新创建渲染任务");
+      navigate(`/tasks/${nextTask.id}`);
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "重新渲染失败";
+      setError(messageText);
+      message.error(messageText);
+    } finally {
+      setRerendering(false);
+    }
+  };
 
   return (
     <Space direction="vertical" size={20} className="full-width">
@@ -57,11 +77,22 @@ export function VideoPage() {
               <Button>返回任务页</Button>
             </Link>
           ) : null}
+          <Button loading={rerendering} disabled={!task} onClick={handleRerender}>
+            重新渲染
+          </Button>
         </Space>
       </section>
       {error ? <Alert type="error" showIcon message={error} /> : null}
       {task?.status === "failed" ? (
         <Alert type="error" showIcon message={task.errorMessage ?? "视频生成失败，请返回任务页查看日志。"} />
+      ) : null}
+      {mayHaveExpiredUrl || (task?.status === "success" && !task.outputVideoUrl) ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="视频链接可能已过期，请重新生成或联系后端重新下载。"
+          description="可以先打开原始链接确认；如果远端 URL 或本地 /outputs 不可访问，请返回任务页查看日志，或点击重新渲染。"
+        />
       ) : null}
       {!task ? (
         <Alert type="warning" showIcon message="暂未获取到视频任务数据。" />

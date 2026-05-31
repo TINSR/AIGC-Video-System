@@ -19,10 +19,13 @@ type Props = {
   dirty: boolean;
   saving?: boolean;
   regeneratingSceneId?: string;
+  renderingPreviewSceneId?: string;
+  scenePreviewAvailable?: boolean;
   onChange: (sceneId: string, patch: ScenePatch) => void;
   onMove: (sceneId: string, direction: "up" | "down") => void;
   onSave: () => void;
   onRegenerate: (sceneId: string) => void;
+  onRenderPreview?: (sceneId: string) => void;
 };
 
 const transitionOptions = [
@@ -36,10 +39,13 @@ export function SceneTimelinePanel({
   dirty,
   saving,
   regeneratingSceneId,
+  renderingPreviewSceneId,
+  scenePreviewAvailable,
   onChange,
   onMove,
   onSave,
-  onRegenerate
+  onRegenerate,
+  onRenderPreview
 }: Props) {
   const totalDuration = scenes.reduce((sum, scene) => sum + Number(scene.duration || 0), 0);
   const overDuration = totalDuration > 15;
@@ -73,6 +79,9 @@ export function SceneTimelinePanel({
       <div className="timeline-track" aria-label="Scene timeline">
         {scenes.map((scene, index) => {
           const scenePreviewUrl = resolveAssetUrl(scene.previewVideoUrl ?? undefined);
+          const previewRunning =
+            renderingPreviewSceneId === scene.id || scene.renderStatus === "pending" || scene.renderStatus === "running";
+          const previewFailed = scene.renderStatus === "failed";
 
           return (
             <article className="timeline-scene" key={scene.id}>
@@ -82,7 +91,9 @@ export function SceneTimelinePanel({
                   {scene.goal ? <Tag color="geekblue">goal: {scene.goal}</Tag> : null}
                   {scene.materialUsage ? <Tag color="cyan">material: {scene.materialUsage}</Tag> : null}
                   {scene.renderStatus ? (
-                    <Tag color={scene.renderStatus === "failed" ? "red" : "blue"}>{scene.renderStatus}</Tag>
+                    <Tag color={previewFailed ? "red" : scene.renderStatus === "success" ? "green" : "blue"}>
+                      {scene.renderStatus}
+                    </Tag>
                   ) : null}
                   <Tag>{scene.duration}s</Tag>
                   <Tag>{scene.transition}</Tag>
@@ -169,6 +180,14 @@ export function SceneTimelinePanel({
               </div>
             ) : null}
 
+            {previewFailed ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="分镜预览生成失败，不影响整片 render。可以继续编辑分镜或稍后重试。"
+              />
+            ) : null}
+
             <Space wrap>
               <Button
                 icon={<ReloadOutlined />}
@@ -182,9 +201,20 @@ export function SceneTimelinePanel({
                   查看分镜预览
                 </Button>
               ) : (
-                <Tooltip title="后端暂未提供 POST /api/creative-plans/:id/scenes/:sceneId/render，前端先保留入口。">
-                  <Button icon={<PlayCircleOutlined />} disabled>
-                    生成分镜预览
+                <Tooltip
+                  title={
+                    scenePreviewAvailable
+                      ? "生成当前分镜的短预览，不影响整片 render。"
+                      : "分镜预览开发中，等待后端提供 POST /api/creative-plans/:id/scenes/:sceneId/render。"
+                  }
+                >
+                  <Button
+                    icon={<PlayCircleOutlined />}
+                    loading={previewRunning}
+                    disabled={!scenePreviewAvailable || !onRenderPreview || saving}
+                    onClick={() => onRenderPreview?.(scene.id)}
+                  >
+                    {previewRunning ? "预览生成中" : previewFailed ? "重新生成预览" : "生成预览"}
                   </Button>
                 </Tooltip>
               )}
