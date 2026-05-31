@@ -13,6 +13,7 @@ export type Material = {
   productId: string;
   type: "image" | "video";
   fileUrl: string;
+  publicUrl?: string;
   thumbnailUrl?: string;
   title: string;
   tags: string[];

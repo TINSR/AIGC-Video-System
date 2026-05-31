@@ -26,6 +26,7 @@ model Material {
   productId     String
   type          String
   fileUrl       String
+  publicUrl     String?
   thumbnailUrl  String?
   title         String
   tags          String

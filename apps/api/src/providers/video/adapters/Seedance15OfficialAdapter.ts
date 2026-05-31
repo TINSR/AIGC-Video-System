@@ -112,14 +112,15 @@ export class Seedance15OfficialAdapter {
   private buildCreateTaskBody(input: SeedanceRenderInput): Record<string, unknown> {
     const content: Array<Record<string, unknown>> = [];
 
-    // Seedance 1.5 accepts one first-frame image. Multi-reference images are a Seedance 2.0 capability.
+    // Seedance 1.5 only accepts one first-frame image.
+    // Prefer publicUrl (OSS/TOS), fallback to local base64, then pure prompt.
     const firstImage = input.materials.find(m => m.type === 'image');
     if (firstImage) {
-      const base64 = this.readImageBase64(firstImage.fileUrl);
-      if (base64) {
+      const imageUrl = this.resolveFirstFrameUrl(firstImage);
+      if (imageUrl) {
         content.push({
           type: 'image_url',
-          image_url: { url: base64 },
+          image_url: { url: imageUrl },
           role: 'first_frame',
         });
       }
@@ -140,6 +141,16 @@ export class Seedance15OfficialAdapter {
       generate_audio: process.env.SEEDANCE_GENERATE_AUDIO === 'true',
       watermark: false,
     };
+  }
+
+  private resolveFirstFrameUrl(material: { publicUrl?: string; fileUrl: string }): string | null {
+    // 1. Prefer publicUrl (OSS/TOS public URL)
+    if (material.publicUrl && material.publicUrl.startsWith('http')) {
+      return material.publicUrl;
+    }
+
+    // 2. Fallback to local base64
+    return this.readImageBase64(material.fileUrl);
   }
 
   private readImageBase64(fileUrl: string): string | null {
