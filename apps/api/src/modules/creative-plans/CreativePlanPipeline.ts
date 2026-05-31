@@ -1,6 +1,7 @@
 import type { CreativePlanInput, CreativePlanDraft, SceneDraft } from '@shared/types/ai-providers';
 import type { Product, Material, VisualBible, ScriptStyle, AgentTrace, SceneGoal, CreativeStrategy, MaterialUsage } from '@shared/types';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
+import { RealLLMProvider } from '../../providers/ai/RealLLMProvider';
 
 // ─── Pipeline Context ────────────────────────────────────────────
 
@@ -81,9 +82,11 @@ function summarizeMaterials(materials: Material[]): string[] {
 
 export class CreativePlanPipeline {
   private mockProvider: MockAiProvider;
+  private llmProvider: RealLLMProvider;
 
   constructor() {
     this.mockProvider = new MockAiProvider();
+    this.llmProvider = new RealLLMProvider();
   }
 
   async generate(input: CreativePlanInput): Promise<CreativePlanDraft & { agentTrace?: AgentTrace[] }> {
@@ -96,6 +99,34 @@ export class CreativePlanPipeline {
       trace: [],
     };
 
+    // Try Real LLM Provider first if configured
+    if (this.llmProvider.isConfigured()) {
+      try {
+        const start = now();
+        const llmDraft = await this.llmProvider.generateCreativePlan(input);
+        ctx.trace.push({
+          agent: 'RealLLMProvider',
+          status: 'success',
+          summary: `LLM 生成完成：${llmDraft.scenes.length} 个分镜，标题"${llmDraft.title}"`,
+          durationMs: now() - start,
+        });
+
+        // Post-process LLM output
+        this.seedancePromptAgent(ctx, llmDraft.scenes as SceneDraft[], llmDraft.visualBible);
+        this.revisionAgent(llmDraft.scenes as SceneDraft[], ctx);
+
+        return { ...llmDraft, agentTrace: ctx.trace };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.trace.push({
+          agent: 'RealLLMProvider',
+          status: 'failed',
+          summary: `LLM 调用失败：${message}，fallback 到规则型 Pipeline`,
+        });
+      }
+    }
+
+    // Rule-based pipeline
     try {
       // Stage 1: ProductAnalystAgent
       const analysis = this.productAnalystAgent(ctx);

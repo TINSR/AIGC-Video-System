@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import type { SeedanceRenderInput, SeedanceRenderOutput, SeedanceTaskStatus } from '@shared/types/ai-providers';
 
 type ArkTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'expired' | string;
@@ -108,20 +110,72 @@ export class Seedance15OfficialAdapter {
   }
 
   private buildCreateTaskBody(input: SeedanceRenderInput): Record<string, unknown> {
+    const content: Array<Record<string, unknown>> = [];
+
+    // Add image references from materials
+    const imageMaterials = input.materials.filter(m => m.type === 'image');
+    for (const img of imageMaterials.slice(0, 3)) { // Max 3 images
+      const base64 = this.readImageBase64(img.fileUrl);
+      if (base64) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: base64 },
+        });
+      }
+    }
+
+    // Add text prompt
+    content.push({
+      type: 'text',
+      text: this.buildPrompt(input),
+    });
+
     return {
       model: this.modelId,
-      content: [
-        {
-          type: 'text',
-          text: this.buildPrompt(input),
-        },
-      ],
+      content,
       resolution: input.resolution === '4k' ? '1080p' : input.resolution || '720p',
       ratio: input.aspectRatio || '9:16',
       duration: this.clampDuration(input.scenes.reduce((sum, scene) => sum + scene.duration, 0)),
       generate_audio: process.env.SEEDANCE_GENERATE_AUDIO === 'true',
       watermark: false,
     };
+  }
+
+  private readImageBase64(fileUrl: string): string | null {
+    try {
+      // fileUrl is like /uploads/xxx.jpg, convert to local path
+      const uploadDir = process.env.UPLOAD_DIR || './uploads';
+      const fileName = fileUrl.replace('/uploads/', '');
+      const filePath = path.join(uploadDir, fileName);
+
+      if (!fs.existsSync(filePath)) {
+        return null;
+      }
+
+      const stats = fs.statSync(filePath);
+      const maxSize = 10 * 1024 * 1024; // 10MB limit
+      if (stats.size > maxSize) {
+        console.warn(`[Seedance] 图片 ${fileName} 超过 10MB 限制，跳过`);
+        return null;
+      }
+
+      const ext = path.extname(fileName).toLowerCase();
+      const mimeMap: Record<string, string> = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif',
+      };
+      const mime = mimeMap[ext] || 'image/jpeg';
+
+      const buffer = fs.readFileSync(filePath);
+      return `data:${mime};base64,${buffer.toString('base64')}`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[Seedance] 读取图片 base64 失败: ${message}`);
+      return null;
+    }
   }
 
   private buildPrompt(input: SeedanceRenderInput): string {
