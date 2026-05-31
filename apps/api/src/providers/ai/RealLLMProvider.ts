@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import type { AiProvider, CreativePlanInput, CreativePlanDraft, SceneRegenerateInput, SceneDraft } from '@shared/types/ai-providers';
 import type { Product, Material, ScriptStyle, VisualBible, SceneGoal } from '@shared/types';
 import { MockAiProvider } from './MockAiProvider';
@@ -38,8 +40,19 @@ interface LLMOutput {
   scenes: LLMSceneDraft[];
 }
 
+type LLMUserContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 const VALID_GOALS: SceneGoal[] = ['full_demo', 'hook', 'feature', 'proof', 'cta'];
 const VALID_TRANSITIONS = ['cut', 'fade', 'zoom'];
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
 
 export class RealLLMProvider implements AiProvider {
   private config: LLMConfig | null;
@@ -123,6 +136,7 @@ transition 必须是 cut/fade/zoom 之一。`;
 ${materialInfo}
 风格偏好：${style || 'scenario'}
 最大时长：${maxDuration || 15} 秒`;
+    const userContent = this.buildUserContent(userPrompt, materials);
 
     const controller = new AbortController();
     const timeoutMs = Math.max(Number(process.env.REAL_LLM_TIMEOUT_MS) || 30_000, 1000);
@@ -139,7 +153,7 @@ ${materialInfo}
           model: this.config!.model,
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
+            { role: 'user', content: userContent },
           ],
           temperature: 0.7,
           response_format: { type: 'json_object' },
@@ -162,6 +176,85 @@ ${materialInfo}
     }
 
     return this.parseAndValidate(content);
+  }
+
+  private buildUserContent(userPrompt: string, materials: Material[]): string | LLMUserContentPart[] {
+    if (!this.supportsImageUnderstanding()) return userPrompt;
+
+    const maxImages = Math.min(Math.max(Number(process.env.REAL_LLM_MAX_IMAGES) || 3, 1), 9);
+    const images = materials
+      .filter(material => material.type === 'image')
+      .slice(0, maxImages)
+      .map(material => this.resolveImageUrl(material))
+      .filter((url): url is string => Boolean(url));
+
+    if (images.length === 0) return userPrompt;
+
+    return [
+      {
+        type: 'text',
+        text: `${userPrompt}
+
+Analyze the attached product images before writing the plan. Separate directly observable visual features from inferred selling points. Treat inferred claims as suggestions that require human confirmation.`,
+      },
+      ...images.map(url => ({ type: 'image_url' as const, image_url: { url } })),
+    ];
+  }
+
+  private supportsImageUnderstanding(): boolean {
+    if (!this.config) return false;
+    if (this.config.provider !== 'xiaomi-mimo') return false;
+    return this.config.model === 'mimo-v2.5' || this.config.model === 'mimo-v2-omni';
+  }
+
+  private resolveImageUrl(material: Material): string | null {
+    const publicUrl = material.publicUrl?.trim();
+    if (publicUrl && this.isPublicHttpUrl(publicUrl)) return publicUrl;
+    if (process.env.REAL_LLM_ALLOW_LOCAL_BASE64_IMAGES !== 'true') return null;
+    return this.readLocalImageBase64(material.fileUrl);
+  }
+
+  private isPublicHttpUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      const hostname = parsed.hostname.toLowerCase();
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+      if (/\/uploads\//i.test(parsed.pathname)) return false;
+      if (
+        hostname === 'localhost'
+        || hostname === '0.0.0.0'
+        || hostname === '::1'
+        || hostname === '127.0.0.1'
+        || hostname.startsWith('10.')
+        || hostname.startsWith('192.168.')
+        || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+      ) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private readLocalImageBase64(fileUrl: string): string | null {
+    try {
+      if (!/^\/uploads\/[^/\\]+$/.test(fileUrl)) return null;
+
+      const uploadDir = path.resolve(process.env.UPLOAD_DIR || './uploads');
+      const filePath = path.resolve(uploadDir, path.basename(fileUrl));
+      if (!filePath.startsWith(`${uploadDir}${path.sep}`) || !fs.existsSync(filePath)) return null;
+
+      const maxBytes = Math.max(Number(process.env.REAL_LLM_MAX_LOCAL_IMAGE_BYTES) || 10 * 1024 * 1024, 1);
+      if (fs.statSync(filePath).size > maxBytes) return null;
+
+      const mime = IMAGE_MIME_BY_EXTENSION[path.extname(filePath).toLowerCase()];
+      if (!mime) return null;
+
+      return `data:${mime};base64,${fs.readFileSync(filePath).toString('base64')}`;
+    } catch {
+      return null;
+    }
   }
 
   private extractContent(data: Record<string, unknown>): string | undefined {
