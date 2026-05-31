@@ -1,4 +1,5 @@
 import { createHash, createHmac } from 'crypto';
+import { getAliyunOssConfig, uploadToAliyunOss } from './aliyunOss';
 
 export type ObjectStorageConfig = {
   provider: string;
@@ -26,7 +27,7 @@ function encodeRfc3986(value: string): string {
   return encodeURIComponent(value).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
-export function getObjectStorageConfig(): ObjectStorageConfig | null {
+export function getS3CompatibleConfig(): ObjectStorageConfig | null {
   const accessKey = process.env.OBJECT_STORAGE_ACCESS_KEY?.trim();
   const secretKey = process.env.OBJECT_STORAGE_SECRET_KEY?.trim();
   const bucket = process.env.OBJECT_STORAGE_BUCKET?.trim();
@@ -49,21 +50,31 @@ export function getObjectStorageConfig(): ObjectStorageConfig | null {
   };
 }
 
-export function isObjectStorageConfigured(): boolean {
-  return getObjectStorageConfig() !== null;
+export function resolveStorageProvider(): 'aliyun_oss' | 's3_compatible' | null {
+  const preferred = (process.env.OBJECT_STORAGE_PROVIDER || '').trim().toLowerCase();
+  if (preferred === 'aliyun_oss') {
+    return getAliyunOssConfig() ? 'aliyun_oss' : null;
+  }
+  if (preferred && preferred !== 'aliyun_oss') {
+    return getS3CompatibleConfig() ? 's3_compatible' : null;
+  }
+  if (getAliyunOssConfig()) return 'aliyun_oss';
+  if (getS3CompatibleConfig()) return 's3_compatible';
+  return null;
 }
 
-/**
- * S3-compatible PUT. Uses permanent public URL from OBJECT_STORAGE_PUBLIC_BASE_URL.
- */
-export async function uploadToObjectStorage(
+export function isObjectStorageConfigured(): boolean {
+  return resolveStorageProvider() !== null;
+}
+
+async function uploadToS3Compatible(
   objectKey: string,
   body: Buffer,
   contentType: string
 ): Promise<CloudUploadResult> {
-  const config = getObjectStorageConfig();
+  const config = getS3CompatibleConfig();
   if (!config) {
-    return { ok: false, reason: 'object storage not configured' };
+    return { ok: false, reason: 's3 compatible storage not configured' };
   }
 
   try {
@@ -143,4 +154,22 @@ export async function uploadToObjectStorage(
     const message = error instanceof Error ? error.message : String(error);
     return { ok: false, reason: message };
   }
+}
+
+/**
+ * Upload to configured object storage (Aliyun OSS SDK or S3-compatible PUT).
+ */
+export async function uploadToObjectStorage(
+  objectKey: string,
+  body: Buffer,
+  contentType: string
+): Promise<CloudUploadResult> {
+  const provider = resolveStorageProvider();
+  if (provider === 'aliyun_oss') {
+    return uploadToAliyunOss(objectKey, body, contentType);
+  }
+  if (provider === 's3_compatible') {
+    return uploadToS3Compatible(objectKey, body, contentType);
+  }
+  return { ok: false, reason: 'object storage not configured' };
 }

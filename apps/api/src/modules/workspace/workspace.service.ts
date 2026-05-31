@@ -3,8 +3,10 @@ import { enrichTaskOutputVideo } from '../../utils/outputVideoUrl';
 import { loadTasksByIds } from '../render/taskPersistence';
 import type {
   GenerationTask,
+  MaterialCloudStatus,
   Product,
   WorkspaceCreativePlanSummary,
+  WorkspaceMaterialSummary,
   WorkspaceNextAction,
   WorkspaceTaskItem,
 } from '@shared/types';
@@ -63,9 +65,11 @@ function summarizePlan(plan: {
 function resolveNextAction(
   materialsCount: number,
   latestPlan: WorkspaceCreativePlanSummary | undefined,
-  latestTask: GenerationTask | undefined
+  latestTask: GenerationTask | undefined,
+  hasPrimary: boolean
 ): WorkspaceNextAction {
   if (materialsCount === 0) return 'upload_material';
+  if (!hasPrimary) return 'upload_material';
   if (!latestPlan) return 'generate_plan';
   if (latestPlan.status === 'draft') return 'review_plan';
 
@@ -77,6 +81,37 @@ function resolveNextAction(
 
   if (latestPlan.status === 'approved') return 'render_video';
   return 'review_plan';
+}
+
+function buildMaterialsSummary(
+  materials: Array<{
+    id: string;
+    thumbnailUrl: string | null;
+    publicUrl: string | null;
+    cloudStatus: string | null;
+    isPrimary: boolean;
+  }>
+): WorkspaceMaterialSummary {
+  let uploadedToCloudCount = 0;
+  let localOnlyCount = 0;
+  let cloudFailedCount = 0;
+
+  for (const row of materials) {
+    if (row.cloudStatus === 'uploaded') uploadedToCloudCount += 1;
+    else if (row.cloudStatus === 'local_only') localOnlyCount += 1;
+    else if (row.cloudStatus === 'failed') cloudFailedCount += 1;
+  }
+
+  const primary = materials.find((m) => m.isPrimary);
+  return {
+    primaryMaterialId: primary?.id,
+    primaryThumbnailUrl: primary?.thumbnailUrl ?? undefined,
+    primaryPublicUrl: primary?.publicUrl ?? undefined,
+    primaryCloudStatus: (primary?.cloudStatus as MaterialCloudStatus) ?? undefined,
+    uploadedToCloudCount,
+    localOnlyCount,
+    cloudFailedCount,
+  };
 }
 
 export class WorkspaceService {
@@ -99,6 +134,29 @@ export class WorkspaceService {
       },
     });
 
+    const productIds = products.map((row) => row.id);
+    const allMaterials =
+      productIds.length > 0
+        ? await prisma.material.findMany({
+            where: { productId: { in: productIds } },
+            select: {
+              id: true,
+              productId: true,
+              thumbnailUrl: true,
+              publicUrl: true,
+              cloudStatus: true,
+              isPrimary: true,
+            },
+          })
+        : [];
+
+    const materialsByProduct = new Map<string, typeof allMaterials>();
+    for (const material of allMaterials) {
+      const list = materialsByProduct.get(material.productId) ?? [];
+      list.push(material);
+      materialsByProduct.set(material.productId, list);
+    }
+
     const taskIds = products
       .map((row) => row.tasks[0]?.id)
       .filter((id): id is string => typeof id === 'string');
@@ -117,13 +175,18 @@ export class WorkspaceService {
         latestTask = fromDb ? enrichTaskOutputVideo(fromDb) : undefined;
       }
 
+      const productMaterials = materialsByProduct.get(row.id) ?? [];
+      const materialsSummary = buildMaterialsSummary(productMaterials);
+      const hasPrimary = productMaterials.some((m) => m.isPrimary);
+
       items.push({
         product: mapProduct(row),
         materialsCount: row._count.materials,
         creativePlansCount: row._count.creativePlans,
+        materialsSummary,
         latestPlan,
         latestTask,
-        nextAction: resolveNextAction(row._count.materials, latestPlan, latestTask),
+        nextAction: resolveNextAction(row._count.materials, latestPlan, latestTask, hasPrimary),
       });
     }
 

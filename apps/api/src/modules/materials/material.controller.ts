@@ -77,6 +77,22 @@ export class MaterialController {
     res.json({ success: true, data: material });
   }
 
+  async setPrimary(req: Request, res: Response) {
+    const { productId, materialId } = req.params;
+
+    try {
+      const materials = await materialService.setPrimaryMaterial(productId, materialId);
+      res.json({ success: true, data: materials });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '设置主图失败';
+      const status = message.includes('不存在') || message.includes('不属于') ? 404 : 400;
+      res.status(status).json({
+        success: false,
+        error: { code: status === 404 ? 'NOT_FOUND' : 'INVALID_REQUEST', message },
+      });
+    }
+  }
+
   async delete(req: Request, res: Response) {
     const { id } = req.params;
     const success = await materialService.delete(id);

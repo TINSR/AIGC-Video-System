@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SeedanceRenderInput, SeedanceRenderOutput, SeedanceTaskStatus } from '@shared/types/ai-providers';
+import { SEEDANCE_15_CAPABILITIES } from '@shared/types/video-provider';
+import { selectFirstFrameMaterial } from '../../../utils/selectFirstFrameMaterial';
 
 type ArkTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'expired' | string;
 type ArkResponse = Record<string, unknown>;
@@ -112,12 +114,20 @@ export class Seedance15OfficialAdapter {
   private buildCreateTaskBody(input: SeedanceRenderInput): Record<string, unknown> {
     const content: Array<Record<string, unknown>> = [];
 
-    // Seedance 1.5 accepts one first-frame image. Multi-reference images are a Seedance 2.0 capability.
-    const sceneMaterialId = input.scenes.find(scene => scene.materialId)?.materialId;
-    const sceneImage = sceneMaterialId
-      ? input.materials.find(material => material.id === sceneMaterialId && material.type === 'image')
-      : undefined;
-    const firstImage = sceneImage || input.materials.find(material => material.type === 'image');
+    // Day11: first_frame from user-confirmed primary or product_primary role only (no arbitrary scene/first image).
+    void SEEDANCE_15_CAPABILITIES;
+    let firstImage = selectFirstFrameMaterial(input.materials);
+    if (!firstImage && input.scenes.length === 1) {
+      const sceneMaterialId = input.scenes[0].materialId;
+      if (sceneMaterialId) {
+        const bound = input.materials.find(
+          (material) => material.id === sceneMaterialId && material.type === 'image'
+        );
+        if (bound && (bound.isPrimary || bound.role === 'product_primary')) {
+          firstImage = bound;
+        }
+      }
+    }
     if (firstImage) {
       const publicUrl = firstImage.publicUrl?.trim();
       if (publicUrl && this.isPublicHttpUrl(publicUrl)) {
