@@ -55,11 +55,13 @@ export function MaterialCard({ material, isPrimary, onSetPrimary }: MaterialCard
           </Typography.Paragraph>
         ) : null}
         {material.type === "image" && onSetPrimary ? (
-          <Button type={isPrimary ? "primary" : "default"} block disabled={isPrimary} onClick={() => onSetPrimary(material.id)}>
-            {isPrimary ? "当前商品主图" : "设为商品主图"}
-          </Button>
+          <div className="material-primary-action">
+            <Button type={isPrimary ? "primary" : "default"} block disabled={isPrimary} onClick={() => onSetPrimary(material.id)}>
+              {isPrimary ? "当前商品主图" : "设为商品主图"}
+            </Button>
+          </div>
         ) : null}
-        <Space wrap>
+        <Space className="material-tag-list" wrap>
           {material.tags.map((tag) => (
             <Tag key={tag}>{tag}</Tag>
           ))}

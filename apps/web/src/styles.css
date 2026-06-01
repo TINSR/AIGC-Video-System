@@ -294,6 +294,14 @@ textarea {
   margin-bottom: 0 !important;
 }
 
+.material-primary-action {
+  margin: 14px 0 12px;
+}
+
+.material-tag-list {
+  padding-top: 2px;
+}
+
 .play-badge {
   position: absolute;
   top: 14px;
