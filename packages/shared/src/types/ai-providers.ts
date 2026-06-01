@@ -1,4 +1,6 @@
 import type { Product, Material, CreativePlan, Scene, VisualBible } from './index';
+export type { VideoModelCapabilities, VideoRenderInput } from './video-provider';
+export { SEEDANCE_15_CAPABILITIES } from './video-provider';
 
 // CreativePlan草稿类型：不含 id/createdAt/status，且分镜使用 SceneDraft
 export type SceneDraft = Omit<Scene, 'id' | 'creativePlanId'>;

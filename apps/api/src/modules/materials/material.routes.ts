@@ -30,6 +30,7 @@ const upload = multer({
 
 router.get('/products/:productId/materials', controller.list);
 router.post('/products/:productId/materials', upload.single('file'), controller.upload);
+router.put('/products/:productId/materials/:materialId/primary', controller.setPrimary);
 router.get('/materials/:id', controller.get);
 router.put('/materials/:id', controller.update);
 router.delete('/materials/:id', controller.delete);

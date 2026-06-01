@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import prisma from '../../config/prisma';
 import { uploadToObjectStorage, isObjectStorageConfigured } from '../../providers/storage/objectStorage';
-import type { Material, MaterialCloudStatus } from '@shared/types';
+import type { Material, MaterialCloudStatus, MaterialRole } from '@shared/types';
 
 export const materialStore = new Map<string, Material>();
 
@@ -11,6 +11,14 @@ const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.avi', '.webm']);
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+
+const MATERIAL_ROLES: MaterialRole[] = [
+  'product_primary',
+  'product_detail',
+  'usage_scene',
+  'packaging',
+  'other',
+];
 
 type MaterialRecord = {
   id: string;
@@ -24,13 +32,29 @@ type MaterialRecord = {
   duration: number | null;
   publicUrl: string | null;
   cloudStatus: string | null;
+  role: string | null;
+  roleConfidence: number | null;
+  roleReason: string | null;
+  isPrimary: boolean;
   createdAt: Date;
 };
 
-type EditableMaterialFields = Omit<Pick<
-  Material,
-  'title' | 'tags' | 'aiDescription' | 'duration' | 'thumbnailUrl' | 'publicUrl' | 'cloudStatus'
->, 'publicUrl'> & {
+type EditableMaterialFields = Omit<
+  Pick<
+    Material,
+    | 'title'
+    | 'tags'
+    | 'aiDescription'
+    | 'duration'
+    | 'thumbnailUrl'
+    | 'publicUrl'
+    | 'cloudStatus'
+    | 'role'
+    | 'roleConfidence'
+    | 'roleReason'
+  >,
+  'publicUrl'
+> & {
   publicUrl?: string | null;
 };
 
@@ -54,6 +78,10 @@ function mapMaterial(record: MaterialRecord): Material {
     tags: parseTags(record.tags),
     aiDescription: record.aiDescription ?? undefined,
     duration: record.duration ?? undefined,
+    role: (record.role as MaterialRole) ?? undefined,
+    roleConfidence: record.roleConfidence ?? undefined,
+    roleReason: record.roleReason ?? undefined,
+    isPrimary: record.isPrimary,
     publicUrl: record.publicUrl ?? undefined,
     cloudStatus: (record.cloudStatus as MaterialCloudStatus) ?? undefined,
     createdAt: record.createdAt.toISOString(),
@@ -69,6 +97,9 @@ function pickEditableFields(data: Partial<Material> & { publicUrl?: string | nul
   if (typeof data.thumbnailUrl === 'string') editable.thumbnailUrl = data.thumbnailUrl;
   if (typeof data.publicUrl === 'string' || data.publicUrl === null) editable.publicUrl = data.publicUrl;
   if (data.cloudStatus) editable.cloudStatus = data.cloudStatus;
+  if (data.role && MATERIAL_ROLES.includes(data.role)) editable.role = data.role;
+  if (typeof data.roleConfidence === 'number') editable.roleConfidence = data.roleConfidence;
+  if (typeof data.roleReason === 'string') editable.roleReason = data.roleReason;
   return editable;
 }
 
@@ -99,14 +130,16 @@ export class MaterialService {
     try {
       const records = await prisma.material.findMany({
         where: { productId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }],
       });
       const materials = records.map(mapMaterial);
       materials.forEach((material) => materialStore.set(material.id, material));
       return materials;
     } catch (error) {
       console.warn('[MaterialService] list from database failed, falling back to memory:', error);
-      return Array.from(materialStore.values()).filter((material) => material.productId === productId);
+      return Array.from(materialStore.values())
+        .filter((material) => material.productId === productId)
+        .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
     }
   }
 
@@ -161,6 +194,7 @@ export class MaterialService {
       tags,
       aiDescription: '',
       duration: type === 'video' ? 10 : undefined,
+      isPrimary: false,
       publicUrl,
       cloudStatus,
       createdAt: new Date().toISOString(),
@@ -180,6 +214,7 @@ export class MaterialService {
           duration: material.duration ?? null,
           publicUrl: material.publicUrl ?? null,
           cloudStatus: material.cloudStatus ?? null,
+          isPrimary: false,
         },
       });
     } catch (error) {
@@ -188,6 +223,44 @@ export class MaterialService {
 
     materialStore.set(id, material);
     return material;
+  }
+
+  async setPrimaryMaterial(productId: string, materialId: string): Promise<Material[]> {
+    const record = await prisma.material.findFirst({
+      where: { id: materialId, productId },
+    });
+
+    if (!record) {
+      throw new Error('素材不存在或不属于该商品');
+    }
+    if (record.type !== 'image') {
+      throw new Error('仅图片素材可设为主图');
+    }
+
+    await prisma.$transaction([
+      prisma.material.updateMany({
+        where: { productId },
+        data: { isPrimary: false },
+      }),
+      prisma.material.update({
+        where: { id: materialId },
+        data: {
+          isPrimary: true,
+          role: 'product_primary',
+        },
+      }),
+    ]);
+
+    for (const cached of materialStore.values()) {
+      if (cached.productId === productId) {
+        cached.isPrimary = cached.id === materialId;
+        if (cached.id === materialId) {
+          cached.role = 'product_primary';
+        }
+      }
+    }
+
+    return this.listByProductId(productId);
   }
 
   async getById(id: string): Promise<Material | null> {

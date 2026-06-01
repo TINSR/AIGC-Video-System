@@ -1,3 +1,9 @@
+export {
+  SEEDANCE_15_CAPABILITIES,
+  type VideoModelCapabilities,
+  type VideoRenderInput,
+} from './types/video-provider';
+
 export type Product = {
   id: string;
   title: string;
@@ -10,6 +16,13 @@ export type Product = {
 
 export type MaterialCloudStatus = 'uploaded' | 'local_only' | 'failed';
 
+export type MaterialRole =
+  | 'product_primary'
+  | 'product_detail'
+  | 'usage_scene'
+  | 'packaging'
+  | 'other';
+
 export type Material = {
   id: string;
   productId: string;
@@ -20,6 +33,10 @@ export type Material = {
   tags: string[];
   aiDescription?: string;
   duration?: number;
+  role?: MaterialRole;
+  roleConfidence?: number;
+  roleReason?: string;
+  isPrimary?: boolean;
   publicUrl?: string;
   cloudStatus?: MaterialCloudStatus;
   createdAt: string;
@@ -163,10 +180,21 @@ export type WorkspaceCreativePlanSummary = Pick<
   scenesCount: number;
 };
 
+export type WorkspaceMaterialSummary = {
+  primaryMaterialId?: string;
+  primaryThumbnailUrl?: string;
+  primaryPublicUrl?: string;
+  primaryCloudStatus?: MaterialCloudStatus;
+  uploadedToCloudCount: number;
+  localOnlyCount: number;
+  cloudFailedCount: number;
+};
+
 export type WorkspaceTaskItem = {
   product: Product;
   materialsCount: number;
   creativePlansCount: number;
+  materialsSummary?: WorkspaceMaterialSummary;
   latestPlan?: WorkspaceCreativePlanSummary;
   latestTask?: GenerationTask;
   nextAction: WorkspaceNextAction;
