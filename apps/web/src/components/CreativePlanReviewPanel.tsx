@@ -1,12 +1,13 @@
-import { Alert, Button, Col, Row, Space, Tag, Typography, message } from "antd";
+import { Alert, Button, Col, Descriptions, Row, Space, Tag, Typography, message } from "antd";
 import { useState } from "react";
 import type { CreativePlan, Material, Scene } from "@clipshop/shared";
-import { SCENE_PREVIEW_AVAILABLE, api } from "../services/api";
+import { SCENE_PREVIEW_AVAILABLE, api, resolveAssetUrl } from "../services/api";
 import { ComplianceWarningList } from "./ComplianceWarningList";
 import { SceneTimelinePanel } from "./SceneTimelinePanel";
 import { ScriptResultPanel } from "./ScriptResultPanel";
 import { StrategyReviewPanel } from "./StrategyReviewPanel";
 import { VisualBiblePanel } from "./VisualBiblePanel";
+import { getMaterialRoleLabel, getPrimaryStorageKey, pickPrimaryMaterialId } from "../services/materialMetadata";
 
 type Props = {
   plan: CreativePlan;
@@ -19,7 +20,7 @@ type EditableScenePatch = Partial<
   Pick<Scene, "duration" | "transition" | "subtitle" | "voiceover" | "seedancePrompt">
 >;
 
-export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) {
+export function CreativePlanReviewPanel({ plan, productName, materials, onRender }: Props) {
   const [currentPlan, setCurrentPlan] = useState(plan);
   const [scenes, setScenes] = useState(() => [...plan.scenes].sort((a, b) => a.order - b.order));
   const [dirty, setDirty] = useState(false);
@@ -31,6 +32,13 @@ export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) 
   const [error, setError] = useState<string>();
 
   const isApproved = currentPlan.status === "approved";
+  const primaryMaterialId = pickPrimaryMaterialId(
+    materials,
+    window.localStorage.getItem(getPrimaryStorageKey(currentPlan.productId))
+  );
+  const primaryMaterial = materials.find((material) => material.id === primaryMaterialId);
+  const totalDuration = scenes.reduce((sum, scene) => sum + Number(scene.duration || 0), 0);
+  const sellingPointOrder = currentPlan.creativeStrategy?.sellingPointOrder?.join(" -> ") || currentPlan.adCopy;
 
   const normalizeScenes = (nextScenes: Scene[]) =>
     nextScenes.map((scene, index) => ({
@@ -102,7 +110,7 @@ export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) 
     setRendering(true);
     try {
       const planForRender = dirty ? await saveTimeline(false) : currentPlan;
-      const task = await api.renderPlan(planForRender.id);
+      const task = await api.renderPlan(planForRender.id, { primaryMaterialId });
       message.success("生成任务已创建");
       onRender(task.id);
     } catch (err) {
@@ -193,6 +201,40 @@ export function CreativePlanReviewPanel({ plan, productName, onRender }: Props) 
         <Alert type="success" showIcon message="方案已审核通过，可以创建视频生成任务。" />
       )}
       {dirty ? <Alert type="warning" showIcon message="当前有未保存剪辑；点击审核或 render 时会先自动保存。" /> : null}
+
+      <div className="surface review-summary">
+        <div>
+          <Typography.Text type="secondary">Review Summary</Typography.Text>
+          <Typography.Title level={3}>审核摘要</Typography.Title>
+        </div>
+        <Descriptions column={{ xs: 1, lg: 2 }} size="small">
+          <Descriptions.Item label="策略目标">{currentPlan.creativeStrategy?.videoGoal ?? currentPlan.title}</Descriptions.Item>
+          <Descriptions.Item label="目标人群">
+            {currentPlan.creativeStrategy?.targetAudience ?? "等待策略输出"}
+          </Descriptions.Item>
+          <Descriptions.Item label="卖点顺序">{sellingPointOrder}</Descriptions.Item>
+          <Descriptions.Item label="当前商品主图">
+            {primaryMaterial ? (
+              <Space align="start" wrap>
+                <img
+                  className="primary-thumb"
+                  src={resolveAssetUrl(primaryMaterial.thumbnailUrl ?? primaryMaterial.fileUrl) ?? primaryMaterial.fileUrl}
+                  alt={primaryMaterial.title}
+                />
+                <Space direction="vertical" size={2}>
+                  <Typography.Text>{primaryMaterial.title}</Typography.Text>
+                  <Typography.Text type="secondary">{getMaterialRoleLabel(primaryMaterial)}</Typography.Text>
+                </Space>
+              </Space>
+            ) : (
+              "尚未确认"
+            )}
+          </Descriptions.Item>
+          <Descriptions.Item label="分镜数量">{scenes.length}</Descriptions.Item>
+          <Descriptions.Item label="分镜总时长">{totalDuration}s</Descriptions.Item>
+          <Descriptions.Item label="当前视频模型">Seedance 1.5 Pro</Descriptions.Item>
+        </Descriptions>
+      </div>
 
       <StrategyReviewPanel plan={currentPlan} productName={productName} />
 

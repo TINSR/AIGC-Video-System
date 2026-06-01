@@ -256,11 +256,14 @@ textarea {
   position: relative;
 }
 
-.material-card img {
+.material-media,
+.material-card img,
+.material-card video {
   width: 100%;
   aspect-ratio: 16 / 10;
   object-fit: cover;
   display: block;
+  background: #05060a;
 }
 
 .material-body {
@@ -274,6 +277,29 @@ textarea {
 .material-video-hint {
   margin-bottom: 10px !important;
   font-size: 12px;
+}
+
+.material-ai-panel {
+  display: grid;
+  gap: 4px;
+  min-height: 74px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.material-ai-panel .ant-typography {
+  margin-bottom: 0 !important;
+}
+
+.material-primary-action {
+  margin: 14px 0 12px;
+}
+
+.material-tag-list {
+  padding-top: 2px;
 }
 
 .play-badge {
@@ -510,6 +536,23 @@ textarea {
 
 .recommendation {
   margin-top: 16px;
+}
+
+.review-summary {
+  display: grid;
+  gap: 14px;
+}
+
+.review-summary h3 {
+  margin: 4px 0 0 !important;
+}
+
+.primary-thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #232538;
 }
 
 .chart {
