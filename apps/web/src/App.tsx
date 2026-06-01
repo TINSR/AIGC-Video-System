@@ -12,6 +12,12 @@ const MaterialsPage = lazy(() => import("./pages/MaterialsPage").then((module) =
 const ProductNewPage = lazy(() =>
   import("./pages/ProductNewPage").then((module) => ({ default: module.ProductNewPage }))
 );
+const ReferenceVideoDetailPage = lazy(() =>
+  import("./pages/ReferenceVideoDetailPage").then((module) => ({ default: module.ReferenceVideoDetailPage }))
+);
+const ReferenceVideoLibraryPage = lazy(() =>
+  import("./pages/ReferenceVideoLibraryPage").then((module) => ({ default: module.ReferenceVideoLibraryPage }))
+);
 const ReviewPage = lazy(() => import("./pages/ReviewPage").then((module) => ({ default: module.ReviewPage })));
 const TaskPage = lazy(() => import("./pages/TaskPage").then((module) => ({ default: module.TaskPage })));
 const VideoPage = lazy(() => import("./pages/VideoPage").then((module) => ({ default: module.VideoPage })));
@@ -32,6 +38,8 @@ const router = createBrowserRouter([
       { path: "creative-plans/:planId/review", element: lazyPage(<ReviewPage />) },
       { path: "tasks/:taskId", element: lazyPage(<TaskPage />) },
       { path: "videos/:videoId", element: lazyPage(<VideoPage />) },
+      { path: "reference-videos", element: lazyPage(<ReferenceVideoLibraryPage />) },
+      { path: "reference-videos/:id", element: lazyPage(<ReferenceVideoDetailPage />) },
       { path: "analytics", element: lazyPage(<AnalyticsPage />) },
       { path: "*", element: <Navigate to="/" replace /> }
     ]

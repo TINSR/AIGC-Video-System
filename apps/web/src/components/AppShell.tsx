@@ -2,6 +2,7 @@ import {
   BarChartOutlined,
   DashboardOutlined,
   FolderAddOutlined,
+  VideoCameraOutlined,
 } from "@ant-design/icons";
 import { Button, Layout, Menu, Space, Tag, Typography } from "antd";
 import type { MenuProps } from "antd";
@@ -10,6 +11,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 const items = [
   { key: "/", icon: <DashboardOutlined />, label: "工作台" },
   { key: "/products/new", icon: <FolderAddOutlined />, label: "创建商品任务" },
+  { key: "/reference-videos", icon: <VideoCameraOutlined />, label: "参考视频库" },
   { key: "/analytics", icon: <BarChartOutlined />, label: "数据看板" },
 ] satisfies NonNullable<MenuProps["items"]>;
 
@@ -17,7 +19,10 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const selectedKey =
-    items.find((item) => String(item?.key) === location.pathname)?.key?.toString() ?? "/";
+    items.find((item) => {
+      const key = String(item?.key);
+      return key === "/" ? location.pathname === "/" : location.pathname.startsWith(key);
+    })?.key?.toString() ?? "/";
 
   return (
     <Layout className="app-shell">

@@ -5,6 +5,9 @@ import type {
   Material,
   MaterialRoleAnalysis,
   Product,
+  ReferenceVideo,
+  ReferenceVideoSourcePlatform,
+  ReferenceVideoSourceType,
   Scene,
   ScriptStyle,
   WorkspaceNextAction,
@@ -38,6 +41,20 @@ const API_BASE_URL = normalizeApiBaseUrl(RAW_API_BASE_URL);
 
 export type WorkspaceTaskSummary = WorkspaceTaskItem;
 
+export type ReferenceVideoCreateInput = {
+  title: string;
+  sourcePlatform: ReferenceVideoSourcePlatform;
+  sourceType: ReferenceVideoSourceType;
+  sourceUrl?: string;
+  sourceNote?: string;
+  category: string;
+  keywords?: string[];
+};
+
+export type ReferenceVideoUploadMetadata = Omit<ReferenceVideoCreateInput, "sourceUrl" | "sourcePlatform" | "sourceType"> & {
+  sourceType: "merchant_owned";
+};
+
 export function resolveAssetUrl(path?: string): string | undefined {
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path)) return path;
@@ -69,6 +86,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const wait = (ms = 180) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+function referenceVideoApiUnavailable(): never {
+  throw new Error("参考视频库需要真实后端 API。请设置 VITE_USE_MOCK=false 后连接 Day12 ReferenceVideo 服务。");
+}
 
 export const api = {
   async getWorkspaceTasks(): Promise<WorkspaceTaskSummary[]> {
@@ -180,7 +201,7 @@ export const api = {
   },
   async generateCreativePlan(
     productId: string,
-    input: { style: ScriptStyle; merchantAdCopy: string; maxDuration: number }
+    input: { style: ScriptStyle; merchantAdCopy: string; maxDuration: number; referenceVideoId?: string }
   ): Promise<CreativePlan> {
     if (!USE_MOCK) {
       return request<CreativePlan>(`/products/${productId}/creative-plans/generate`, {
@@ -190,6 +211,51 @@ export const api = {
     }
     await wait(400);
     return { ...creativePlans[0], productId, style: input.style };
+  },
+  async getReferenceVideos(): Promise<ReferenceVideo[]> {
+    if (!USE_MOCK) return request<ReferenceVideo[]>("/reference-videos");
+    await wait();
+    return [];
+  },
+  async getReferenceVideo(id: string): Promise<ReferenceVideo> {
+    if (!USE_MOCK) return request<ReferenceVideo>(`/reference-videos/${id}`);
+    await wait();
+    return referenceVideoApiUnavailable();
+  },
+  async createReferenceVideo(input: ReferenceVideoCreateInput): Promise<ReferenceVideo> {
+    if (!USE_MOCK) {
+      return request<ReferenceVideo>("/reference-videos", {
+        method: "POST",
+        body: JSON.stringify(input)
+      });
+    }
+    await wait();
+    return referenceVideoApiUnavailable();
+  },
+  async uploadReferenceVideo(file: File, metadata: ReferenceVideoUploadMetadata): Promise<ReferenceVideo> {
+    if (!USE_MOCK) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("metadata", JSON.stringify(metadata));
+      Object.entries(metadata).forEach(([key, value]) => {
+        if (value !== undefined) formData.append(key, Array.isArray(value) ? value.join(",") : String(value));
+      });
+      return request<ReferenceVideo>("/reference-videos/upload", {
+        method: "POST",
+        body: formData
+      });
+    }
+    await wait();
+    return referenceVideoApiUnavailable();
+  },
+  async analyzeReferenceVideo(id: string): Promise<ReferenceVideo> {
+    if (!USE_MOCK) {
+      return request<ReferenceVideo>(`/reference-videos/${id}/analyze`, {
+        method: "POST"
+      });
+    }
+    await wait();
+    return referenceVideoApiUnavailable();
   },
   async getCreativePlan(planId: string): Promise<CreativePlan> {
     if (!USE_MOCK) return request<CreativePlan>(`/creative-plans/${planId}`);
