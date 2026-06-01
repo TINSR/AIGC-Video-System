@@ -1,4 +1,4 @@
-import type { Product, Material, CreativePlan, Scene, VisualBible } from '../types';
+import type { Product, Material, CreativePlan, Scene, VisualBible, ReferenceVideoAnalysis } from '../types';
 
 export type SceneDraft = Omit<Scene, 'id' | 'creativePlanId'>;
 
@@ -16,6 +16,8 @@ export interface CreativePlanInput {
   materials: Material[];
   style?: 'pain_point' | 'review' | 'scenario' | 'discount' | 'premium';
   maxDuration?: number;
+  referenceVideoId?: string;
+  referenceVideoAnalysis?: ReferenceVideoAnalysis;
 }
 
 export interface SceneRegenerateInput {

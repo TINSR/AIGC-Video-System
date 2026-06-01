@@ -1,5 +1,5 @@
 import type { CreativePlanInput, CreativePlanDraft, SceneDraft } from '@shared/types/ai-providers';
-import type { Product, Material, VisualBible, ScriptStyle, AgentTrace, SceneGoal, CreativeStrategy, MaterialUsage } from '@shared/types';
+import type { Product, Material, VisualBible, ScriptStyle, AgentTrace, SceneGoal, CreativeStrategy, MaterialUsage, ReferenceVideoAnalysis } from '@shared/types';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
 import { RealLLMProvider } from '../../providers/ai/RealLLMProvider';
 
@@ -12,6 +12,8 @@ interface PipelineContext {
   maxDuration: number;
   sceneCount: number;
   trace: AgentTrace[];
+  referenceVideoId?: string;
+  referenceVideoAnalysis?: ReferenceVideoAnalysis;
 }
 
 // ─── Agent Output Types ──────────────────────────────────────────
@@ -78,6 +80,7 @@ function summarizeMaterials(materials: Material[]): string[] {
   });
 }
 
+
 // ─── Pipeline ────────────────────────────────────────────────────
 
 export class CreativePlanPipeline {
@@ -95,9 +98,21 @@ export class CreativePlanPipeline {
       materials: input.materials,
       style: input.style || 'scenario',
       maxDuration: input.maxDuration || 15,
-      sceneCount: 4,
+      sceneCount: input.referenceVideoAnalysis?.scenes.length
+        ? Math.min(Math.max(input.referenceVideoAnalysis.scenes.length, 1), 4)
+        : 4,
       trace: [],
+      referenceVideoId: input.referenceVideoId,
+      referenceVideoAnalysis: input.referenceVideoAnalysis,
     };
+
+    if (input.referenceVideoAnalysis && input.referenceVideoId) {
+      ctx.trace.push({
+        agent: 'ReferenceVideoInspiration',
+        status: 'success',
+        summary: `使用参考视频 ${input.referenceVideoId}：${input.referenceVideoAnalysis.hookType} / ${input.referenceVideoAnalysis.style}`,
+      });
+    }
 
     // Try Real LLM Provider first if configured
     if (this.llmProvider.isConfigured()) {
@@ -282,10 +297,16 @@ export class CreativePlanPipeline {
     const start = now();
     const { product } = ctx;
 
-    const hook = `你是不是还在为${analysis.painPoints}烦恼？`;
-    const title = `${product.title} - ${analysis.sellingPoints[0] || '品质之选'}`;
-    const adCopy = `这款${product.title}，${analysis.sellingPoints.join('，')}，专为${analysis.targetUsers}设计，让你的生活更便捷！`;
-    const cta = '现在下单享专属优惠，点击下方小黄车带走吧！';
+    const hook = ctx.referenceVideoAnalysis
+      ? `参考灵感（${ctx.referenceVideoAnalysis.hookType}）：${ctx.referenceVideoAnalysis.summary.slice(0, 60)}`
+      : `你是不是还在为${analysis.painPoints}烦恼？`;
+    const title = `${product.title} - ${analysis.sellingPoints[0] || ctx.referenceVideoAnalysis?.sellingPoints[0] || '品质之选'}`;
+    const adCopy = ctx.referenceVideoAnalysis
+      ? `这款${product.title}，借鉴参考视频结构：${ctx.referenceVideoAnalysis.sellingPoints.join('，')}。${analysis.sellingPoints.join('，')}，专为${analysis.targetUsers}设计。`
+      : `这款${product.title}，${analysis.sellingPoints.join('，')}，专为${analysis.targetUsers}设计，让你的生活更便捷！`;
+    const cta = ctx.referenceVideoAnalysis?.ctaType === 'shop_now'
+      ? '现在下单享专属优惠，点击下方小黄车带走吧！'
+      : '现在下单享专属优惠，点击下方小黄车带走吧！';
 
     const script: ScriptOutput = {
       title,

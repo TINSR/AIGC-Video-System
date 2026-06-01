@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { AiProvider, CreativePlanInput, CreativePlanDraft, SceneRegenerateInput, SceneDraft } from '@shared/types/ai-providers';
-import type { Product, Material, ScriptStyle, VisualBible, SceneGoal } from '@shared/types';
+import type { Product, Material, ScriptStyle, VisualBible, SceneGoal, ReferenceVideoAnalysis } from '@shared/types';
 import { MockAiProvider } from './MockAiProvider';
 
 interface LLMConfig {
@@ -53,6 +53,19 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   '.webp': 'image/webp',
   '.gif': 'image/gif',
 };
+
+function summarizeReferenceInspirationForLlm(analysis: ReferenceVideoAnalysis): string {
+  const sceneGoals = analysis.scenes.map((scene) => `${scene.goal}: ${scene.summary}`).join('\n');
+  return [
+    `摘要：${analysis.summary}`,
+    `Hook 类型：${analysis.hookType}`,
+    `风格：${analysis.style}`,
+    `卖点灵感：${analysis.sellingPoints.join('、')}`,
+    `CTA 类型：${analysis.ctaType}`,
+    `关键词：${analysis.keywords.join('、')}`,
+    `分镜目标：\n${sceneGoals}`,
+  ].join('\n');
+}
 
 export class RealLLMProvider implements AiProvider {
   private config: LLMConfig | null;
@@ -135,7 +148,10 @@ transition 必须是 cut/fade/zoom 之一。`;
 - 使用场景：${product.usageScene}
 ${materialInfo}
 风格偏好：${style || 'scenario'}
-最大时长：${maxDuration || 15} 秒`;
+最大时长：${maxDuration || 15} 秒${input.referenceVideoAnalysis ? `
+
+参考视频结构化灵感（仅作创作参考，不要复制原视频字幕或逐句复刻）：
+${summarizeReferenceInspirationForLlm(input.referenceVideoAnalysis)}` : ''}`;
     const userContent = this.buildUserContent(userPrompt, materials);
 
     const controller = new AbortController();

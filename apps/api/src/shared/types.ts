@@ -16,6 +16,57 @@ export type Product = {
 
 export type MaterialCloudStatus = 'uploaded' | 'local_only' | 'failed';
 
+export type ReferenceVideoSourcePlatform =
+  | 'douyin_shop'
+  | 'tiktok_shop'
+  | 'instagram'
+  | 'facebook'
+  | 'merchant_upload'
+  | 'other';
+
+export type ReferenceVideoSourceType =
+  | 'merchant_owned'
+  | 'licensed_public'
+  | 'public_reference';
+
+export type ReferenceVideoAnalysisStatus = 'pending' | 'running' | 'success' | 'failed';
+
+export type ReferenceVideoAnalysisScene = {
+  startTime: string;
+  endTime: string;
+  goal: string;
+  summary: string;
+};
+
+export type ReferenceVideoAnalysis = {
+  summary: string;
+  hookType: string;
+  sellingPoints: string[];
+  style: string;
+  scenes: ReferenceVideoAnalysisScene[];
+  ctaType: string;
+  keywords: string[];
+};
+
+export type ReferenceVideo = {
+  id: string;
+  title: string;
+  sourcePlatform: ReferenceVideoSourcePlatform;
+  sourceType: ReferenceVideoSourceType;
+  sourceUrl?: string;
+  sourceNote?: string;
+  category: string;
+  keywords: string[];
+  fileUrl?: string;
+  publicUrl?: string;
+  cloudStatus?: MaterialCloudStatus;
+  analysisStatus: ReferenceVideoAnalysisStatus;
+  analysis?: ReferenceVideoAnalysis;
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type MaterialRole =
   | 'product_primary'
   | 'product_detail'

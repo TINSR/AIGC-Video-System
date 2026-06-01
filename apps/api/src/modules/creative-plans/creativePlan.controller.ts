@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { CreativePlanService } from './creativePlan.service';
 import { RenderService } from '../render/render.service';
 import { MaterialService } from '../materials/material.service';
+import { ReferenceVideoService } from '../reference-videos/referenceVideo.service';
 import * as productService from '../products/product.service';
 import { planStore } from '../../memory-store';
 import type { ApiResponse, CreativePlan, Product, Material, Scene, GenerationTask } from '@shared/types';
@@ -52,18 +53,20 @@ export class CreativePlanController {
   private creativePlanService: CreativePlanService;
   private renderService: RenderService;
   private materialService: MaterialService;
+  private referenceVideoService: ReferenceVideoService;
 
   constructor() {
     this.creativePlanService = new CreativePlanService();
     this.renderService = new RenderService();
     this.materialService = new MaterialService();
+    this.referenceVideoService = new ReferenceVideoService();
   }
 
   // 生成创意方案
   generate = async (req: Request, res: Response<ApiResponse<CreativePlan>>) => {
     try {
       const { productId } = req.params;
-      const { style, maxDuration } = req.body;
+      const { style, maxDuration, referenceVideoId } = req.body;
 
       let product = productId === demoProduct.id ? demoProduct : { ...demoProduct, id: productId };
       try {
@@ -86,11 +89,21 @@ export class CreativePlanController {
       const storedMaterials = await this.materialService.listByProductId(productId);
       const materials = storedMaterials.length > 0 ? storedMaterials : productId === demoProduct.id ? demoMaterials : [];
 
+      let referenceVideoAnalysis;
+      if (typeof referenceVideoId === 'string' && referenceVideoId.trim()) {
+        referenceVideoAnalysis = await this.referenceVideoService.getAnalysisForGenerate(referenceVideoId.trim());
+        if (!referenceVideoAnalysis) {
+          console.warn(`[CreativePlanController] referenceVideoId=${referenceVideoId} 不可用或未分析成功，已忽略`);
+        }
+      }
+
       const creativePlan = await this.creativePlanService.generateCreativePlan({
         product,
         materials,
         style,
         maxDuration,
+        referenceVideoId: typeof referenceVideoId === 'string' ? referenceVideoId.trim() : undefined,
+        referenceVideoAnalysis,
       });
 
       res.json({

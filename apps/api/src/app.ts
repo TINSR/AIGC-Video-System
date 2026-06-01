@@ -25,6 +25,7 @@ import renderRoutes from './modules/render/render.routes';
 import workspaceRoutes from './modules/workspace/workspace.routes';
 import materialRoutes from './modules/materials/material.routes';
 import analyticsRoutes from './modules/analytics/analytics.routes';
+import referenceVideoRoutes from './modules/reference-videos/referenceVideo.routes';
 
 app.use('/api/products', productRoutes);
 app.use('/api', creativePlanRoutes);
@@ -32,6 +33,7 @@ app.use('/api', renderRoutes);
 app.use('/api', workspaceRoutes);
 app.use('/api', materialRoutes);
 app.use('/api', analyticsRoutes);
+app.use('/api', referenceVideoRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok', timestamp: new Date().toISOString() } });

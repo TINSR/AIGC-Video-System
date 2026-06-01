@@ -115,3 +115,22 @@ model TaskLog {
   timestamp DateTime       @default(now())
   task      GenerationTask @relation(fields: [taskId], references: [id])
 }
+
+model ReferenceVideo {
+  id             String   @id @default(cuid())
+  title          String
+  sourcePlatform String
+  sourceType     String
+  sourceUrl      String?  @db.Text
+  sourceNote     String?  @db.Text
+  category       String
+  keywords       Json?
+  fileUrl        String?
+  publicUrl      String?  @db.Text
+  cloudStatus    String?
+  analysisStatus String   @default("pending")
+  analysis       Json?
+  errorMessage   String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
