@@ -5,6 +5,14 @@ import type {
   Material,
   Product
 } from "@clipshop/shared";
+import type { MaterialRole } from "../services/materialMetadata";
+
+type MockMaterial = Material & {
+  materialRole?: MaterialRole;
+  aiConfidence?: number;
+  aiReason?: string;
+  isPrimary?: boolean;
+};
 
 export const products: Product[] = [
   {
@@ -27,7 +35,7 @@ export const products: Product[] = [
   }
 ];
 
-export const materials: Material[] = [
+export const materials: MockMaterial[] = [
   {
     id: "material_001",
     productId: "product_001",
@@ -35,6 +43,10 @@ export const materials: Material[] = [
     fileUrl: "https://images.unsplash.com/photo-1622484211148-033f70d0e51d?auto=format&fit=crop&w=900&q=80",
     publicUrl: "https://images.unsplash.com/photo-1622484211148-033f70d0e51d?auto=format&fit=crop&w=900&q=80",
     cloudStatus: "uploaded",
+    materialRole: "product_primary",
+    aiConfidence: 0.94,
+    aiReason: "商品主体清晰，杯身完整，适合作为 Seedance 1.5 单张 first_frame。",
+    isPrimary: true,
     title: "榨汁杯主图",
     tags: ["主图", "透明杯身", "白色"],
     aiDescription: "白色便携榨汁杯放在明亮厨房台面，旁边有水果。",
@@ -46,6 +58,9 @@ export const materials: Material[] = [
     type: "image",
     fileUrl: "https://images.unsplash.com/photo-1589733955941-5eeaf752f6dd?auto=format&fit=crop&w=900&q=80",
     cloudStatus: "local_only",
+    materialRole: "usage_scene",
+    aiConfidence: 0.82,
+    aiReason: "水果和饮品氛围强，适合做生活方式场景，不建议作为商品首帧。",
     title: "水果与饮品场景",
     tags: ["场景", "水果", "清爽"],
     aiDescription: "鲜切水果和果汁放在桌面，适合表现健康生活方式。",
@@ -58,6 +73,9 @@ export const materials: Material[] = [
     fileUrl: "/mock/blender-demo.mp4",
     thumbnailUrl: "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=900&q=80",
     cloudStatus: "failed",
+    materialRole: "usage_scene",
+    aiConfidence: 0.76,
+    aiReason: "包含办公室使用片段，可辅助分镜，但当前版本暂不作为 Seedance 1.5 多参考视频。",
     title: "办公室饮用片段",
     tags: ["短视频", "办公室", "通勤"],
     aiDescription: "年轻人在办公室桌面拿起果汁杯，镜头适合做 CTA。",
@@ -71,6 +89,10 @@ export const materials: Material[] = [
     fileUrl: "https://images.unsplash.com/photo-1553531768-a0f91bc9e42b?auto=format&fit=crop&w=900&q=80",
     publicUrl: "https://images.unsplash.com/photo-1553531768-a0f91bc9e42b?auto=format&fit=crop&w=900&q=80",
     cloudStatus: "uploaded",
+    materialRole: "product_primary",
+    aiConfidence: 0.91,
+    aiReason: "收纳包结构完整可见，适合确认成商品主图。",
+    isPrimary: true,
     title: "收纳包平铺",
     tags: ["主图", "分区", "旅行"],
     aiDescription: "多个旅行收纳包平铺展示，能清楚看到分区结构。",
@@ -82,6 +104,9 @@ export const materials: Material[] = [
     type: "image",
     fileUrl: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=900&q=80",
     cloudStatus: "local_only",
+    materialRole: "usage_scene",
+    aiConfidence: 0.79,
+    aiReason: "痛点明确，适合开场场景，不适合作为商品主图。",
     title: "行李箱整理前",
     tags: ["痛点", "行李箱", "杂乱"],
     aiDescription: "打开的行李箱中衣物杂乱，适合做痛点开场。",
@@ -94,6 +119,9 @@ export const materials: Material[] = [
     fileUrl: "/mock/packing-demo.mp4",
     thumbnailUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
     cloudStatus: "local_only",
+    materialRole: "usage_scene",
+    aiConfidence: 0.74,
+    aiReason: "展示打包过程，适合过程分镜，等待抽帧能力补齐后可作为参考图。",
     title: "旅行打包过程",
     tags: ["短视频", "打包", "对比"],
     aiDescription: "把衣物按类别放入收纳包，适合做过程展示。",

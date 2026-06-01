@@ -25,6 +25,11 @@ function isFallbackDisabledError(message?: string) {
   return /fallback/i.test(message) && /(关闭|禁用|disabled|strict|ALLOW_FFMPEG_FALLBACK)/i.test(message);
 }
 
+function isDownloadingVideo(task?: GenerationTask) {
+  const text = [task?.currentStep, ...(task?.logs ?? []).map((log) => log.message)].filter(Boolean).join(" ");
+  return /(下载|download|落盘|outputs)/i.test(text);
+}
+
 export function TaskPage() {
   const { taskId = "task_001" } = useParams();
   const [task, setTask] = useState<GenerationTask>();
@@ -93,6 +98,12 @@ export function TaskPage() {
   const latestLog = task?.logs?.[task.logs.length - 1];
   const provider = task ? providerCopy[task.provider] : undefined;
   const fallbackDisabled = isFallbackDisabledError(error) || isFallbackDisabledError(task?.errorMessage);
+  const downloadingVideo = isDownloadingVideo(task);
+  const fallbackStatus = task?.provider === "ffmpeg_fallback"
+    ? "已进入 FFmpeg fallback"
+    : fallbackDisabled
+      ? "生产严格模式已关闭 fallback"
+      : "未触发 fallback";
 
   return (
     <Space direction="vertical" size={20} className="full-width">
@@ -127,8 +138,8 @@ export function TaskPage() {
         <Alert
           type="info"
           showIcon
-          message={`远端生成中，已等待 ${formatElapsed(elapsedSeconds)}`}
-          description={`Seedance 实测可能需要 3-5 分钟。当前步骤：${task.currentStep || "等待后端更新"}。最新日志：${latestLog?.message ?? "暂无日志"}`}
+          message={`远端生成通常需要 2-5 分钟，已等待 ${formatElapsed(elapsedSeconds)}`}
+          description={`当前步骤：${task.currentStep || "等待后端更新"}。${downloadingVideo ? "正在下载视频。" : "等待远端视频返回。"}当前 provider：${provider?.text ?? task.provider}。fallback 状态：${fallbackStatus}。最新日志：${latestLog?.message ?? "暂无日志"}`}
         />
       ) : null}
       {task ? (
@@ -143,12 +154,14 @@ export function TaskPage() {
               <Descriptions.Item label="progress">{task.progress}%</Descriptions.Item>
               <Descriptions.Item label="已等待">{formatElapsed(elapsedSeconds)}</Descriptions.Item>
               <Descriptions.Item label="currentStep">{task.currentStep}</Descriptions.Item>
+              <Descriptions.Item label="正在下载视频">{downloadingVideo ? "是" : "否"}</Descriptions.Item>
               <Descriptions.Item label="provider">
                 <Space wrap>
                   <Typography.Text>{task.provider}</Typography.Text>
                   <Tag color={provider?.color}>{provider?.text}</Tag>
                 </Space>
               </Descriptions.Item>
+              <Descriptions.Item label="fallback 状态">{fallbackStatus}</Descriptions.Item>
               <Descriptions.Item label="outputVideoUrl">
                 {resolvedOutputUrl ? (
                   <a href={resolvedOutputUrl} target="_blank" rel="noreferrer">

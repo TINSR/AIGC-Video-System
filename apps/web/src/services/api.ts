@@ -273,7 +273,7 @@ export const api = {
     plan.status = "approved";
     return { ...plan, id: planId, status: "approved" };
   },
-  async renderPlan(planId: string): Promise<GenerationTask> {
+  async renderPlan(planId: string, options?: { primaryMaterialId?: string }): Promise<GenerationTask> {
     if (!USE_MOCK) {
       return request<GenerationTask>(`/creative-plans/${planId}/render`, {
         method: "POST",
@@ -282,7 +282,8 @@ export const api = {
           aspectRatio: "9:16",
           withTts: true,
           withBgm: true,
-          fallbackToFfmpeg: true
+          fallbackToFfmpeg: true,
+          primaryMaterialId: options?.primaryMaterialId
         })
       });
     }
