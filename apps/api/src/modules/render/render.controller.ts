@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { RenderService } from './render.service';
 import { CreativePlanService } from '../creative-plans/creativePlan.service';
+import { MaterialService } from '../materials/material.service';
 import type { ApiResponse, GenerationTask, Material } from '@shared/types';
 
 const demoMaterials: Material[] = [
@@ -22,10 +23,12 @@ const demoMaterials: Material[] = [
 export class RenderController {
   private renderService: RenderService;
   private creativePlanService: CreativePlanService;
+  private materialService: MaterialService;
 
   constructor() {
     this.renderService = new RenderService();
     this.creativePlanService = new CreativePlanService();
+    this.materialService = new MaterialService();
   }
 
   // 创建渲染任务 — 从共享 planStore 读取真实 CreativePlan
@@ -54,7 +57,18 @@ export class RenderController {
         });
       }
 
-      const task = await this.renderService.createRenderTask(creativePlan, demoMaterials);
+      const primaryMaterialId = typeof req.body?.primaryMaterialId === 'string'
+        ? req.body.primaryMaterialId
+        : undefined;
+      if (primaryMaterialId) {
+        await this.materialService.setPrimaryMaterial(creativePlan.productId, primaryMaterialId);
+      }
+
+      const storedMaterials = await this.materialService.listByProductId(creativePlan.productId);
+      const materials = storedMaterials.length > 0
+        ? storedMaterials
+        : creativePlan.productId === 'product_001' ? demoMaterials : [];
+      const task = await this.renderService.createRenderTask(creativePlan, materials);
 
       res.json({
         success: true,

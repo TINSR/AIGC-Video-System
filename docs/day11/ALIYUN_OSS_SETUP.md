@@ -27,7 +27,7 @@ ALIYUN_OSS_PUBLIC_BASE_URL="https://your-bucket.oss-cn-hangzhou.aliyuncs.com"
 
 ## 与 S3 兼容存储共存
 
-设置 `OBJECT_STORAGE_PROVIDER` 为 `tos` 等且配置 `OBJECT_STORAGE_*` 时，仍走 Day10 S3 兼容 PUT。  
+设置 `OBJECT_STORAGE_PROVIDER` 为 `tos` 等且配置 `OBJECT_STORAGE_*` 时，仍走 Day10 S3 兼容 PUT。
 设置 `aliyun_oss` 且配置 `ALIYUN_OSS_*` 时，使用官方 `ali-oss` SDK。
 
 ## 本地回归

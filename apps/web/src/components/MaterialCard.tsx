@@ -7,6 +7,7 @@ import { getMaterialConfidence, getMaterialReason, getMaterialRoleLabel } from "
 type MaterialCardProps = {
   material: Material;
   isPrimary?: boolean;
+  primarySaving?: boolean;
   onSetPrimary?: (materialId: string) => void;
 };
 
@@ -20,7 +21,7 @@ function getCloudStatus(material: Material) {
   return material.cloudStatus ?? (material.publicUrl ? "uploaded" : "local_only");
 }
 
-export function MaterialCard({ material, isPrimary, onSetPrimary }: MaterialCardProps) {
+export function MaterialCard({ material, isPrimary, primarySaving, onSetPrimary }: MaterialCardProps) {
   const cover = resolveAssetUrl(material.thumbnailUrl ?? material.fileUrl) ?? material.publicUrl ?? material.fileUrl;
   const cloudStatus = cloudStatusCopy[getCloudStatus(material)];
   const confidence = getMaterialConfidence(material);
@@ -56,7 +57,7 @@ export function MaterialCard({ material, isPrimary, onSetPrimary }: MaterialCard
         ) : null}
         {material.type === "image" && onSetPrimary ? (
           <div className="material-primary-action">
-            <Button type={isPrimary ? "primary" : "default"} block disabled={isPrimary} onClick={() => onSetPrimary(material.id)}>
+            <Button type={isPrimary ? "primary" : "default"} block disabled={isPrimary} loading={primarySaving} onClick={() => onSetPrimary(material.id)}>
               {isPrimary ? "当前商品主图" : "设为商品主图"}
             </Button>
           </div>

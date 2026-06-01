@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 $Base = "http://localhost:3001/api"
 $Img = $env:DAY11_TEST_IMAGE
 if (-not $Img) {
-  $Img = "C:\Users\DELL\OneDrive\图片\4479292526dbf3e26b0580026c467ec2.jpg"
+  Write-Host "[SKIP] set DAY11_TEST_IMAGE to a local image path"
+  exit 1
 }
 if (-not (Test-Path -LiteralPath $Img)) {
   Write-Host "[SKIP] image not found: $Img (set DAY11_TEST_IMAGE)"

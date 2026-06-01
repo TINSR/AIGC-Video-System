@@ -54,8 +54,7 @@ export async function uploadToAliyunOss(
 
     const publicUrl = `${config.publicBaseUrl}/${objectKey}`;
     return { ok: true, publicUrl, objectKey };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, reason: message };
+  } catch {
+    return { ok: false, reason: 'aliyun oss upload failed' };
   }
 }

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { MaterialService } from './material.service';
+import { MaterialRoleAnalyzer } from '../../providers/ai/MaterialRoleAnalyzer';
 import { z } from 'zod';
 
 const materialService = new MaterialService();
@@ -91,6 +92,17 @@ export class MaterialController {
         error: { code: status === 404 ? 'NOT_FOUND' : 'INVALID_REQUEST', message },
       });
     }
+  }
+
+  async analyzeRoles(req: Request, res: Response) {
+    const { productId } = req.params;
+    const analyzer = new MaterialRoleAnalyzer();
+    const analyses = await materialService.analyzeRoles(
+      productId,
+      analyzer.isConfigured() ? (materials) => analyzer.analyze(materials) : undefined
+    );
+
+    res.json({ success: true, data: analyses });
   }
 
   async delete(req: Request, res: Response) {

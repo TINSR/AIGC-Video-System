@@ -1,8 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SeedanceRenderInput, SeedanceRenderOutput, SeedanceTaskStatus } from '@shared/types/ai-providers';
-import { SEEDANCE_15_CAPABILITIES } from '@shared/types';
-import { selectFirstFrameMaterial } from '../../../utils/selectFirstFrameMaterial';
+import type { SeedanceRenderInput, SeedanceRenderOutput, SeedanceTaskStatus, VideoModelCapabilities } from '@shared/types/ai-providers';
 
 type ArkTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'expired' | string;
 type ArkResponse = Record<string, unknown>;
@@ -11,11 +9,24 @@ export class Seedance15OfficialAdapter {
   private apiKey?: string;
   private baseUrl: string;
   private modelId: string;
+  private modelVersion: '1.5' | '2.0';
 
   constructor(apiKey?: string) {
     this.apiKey = apiKey;
     this.baseUrl = (process.env.SEEDANCE_API_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/$/, '');
     this.modelId = process.env.SEEDANCE_MODEL_ID || 'doubao-seedance-1-5-pro-251215';
+    this.modelVersion = process.env.SEEDANCE_MODEL_VERSION === '2.0' ? '2.0' : '1.5';
+  }
+
+  getCapabilities(): VideoModelCapabilities {
+    const is20 = this.modelVersion === '2.0';
+    return {
+      supportsFirstFrame: true,
+      supportsLastFrame: is20,
+      supportsReferenceImages: is20,
+      supportsReferenceVideo: is20,
+      maxDurationSeconds: is20 ? 15 : 12,
+    };
   }
 
   async render(input: SeedanceRenderInput): Promise<SeedanceRenderOutput> {
@@ -114,40 +125,45 @@ export class Seedance15OfficialAdapter {
   private buildCreateTaskBody(input: SeedanceRenderInput): Record<string, unknown> {
     const content: Array<Record<string, unknown>> = [];
 
-    // Day11: first_frame from user-confirmed primary or product_primary role only (no arbitrary scene/first image).
-    void SEEDANCE_15_CAPABILITIES;
-    let firstImage = selectFirstFrameMaterial(input.materials);
-    if (!firstImage && input.scenes.length === 1) {
-      const sceneMaterialId = input.scenes[0].materialId;
-      if (sceneMaterialId) {
-        const bound = input.materials.find(
-          (material) => material.id === sceneMaterialId && material.type === 'image'
-        );
-        if (bound && (bound.isPrimary || bound.role === 'product_primary')) {
-          firstImage = bound;
-        }
-      }
-    }
-    if (firstImage) {
-      const publicUrl = firstImage.publicUrl?.trim();
+    // First_frame selection priority:
+    // 1. User confirmed isPrimary=true
+    // 2. AI recommended product_primary role
+    // 3. First valid OSS publicUrl
+    // 4. Base64 debug fallback
+    // 5. Pure prompt (no image)
+    const selectedImage = this.selectFirstFrameImage(input);
+    if (selectedImage) {
+      const publicUrl = selectedImage.publicUrl?.trim();
+      let added = false;
+
       if (publicUrl && this.isPublicHttpUrl(publicUrl)) {
         content.push({
           type: 'image_url',
           image_url: { url: publicUrl },
           role: 'first_frame',
         });
+        added = true;
+        console.info(`[Seedance] first_frame: using OSS publicUrl from material ${selectedImage.id} (role=${selectedImage.role ?? 'none'}, isPrimary=${selectedImage.isPrimary ?? false})`);
       } else if (process.env.SEEDANCE_ALLOW_BASE64_DEBUG === 'true') {
-        const base64 = this.readImageBase64(firstImage.fileUrl);
+        const base64 = this.readImageBase64(selectedImage.fileUrl);
         if (base64) {
           content.push({
             type: 'image_url',
             image_url: { url: base64 },
             role: 'first_frame',
           });
+          added = true;
+          console.info(`[Seedance] first_frame: using base64 debug fallback from material ${selectedImage.id}`);
         }
       } else if (publicUrl) {
-        console.warn('[Seedance] publicUrl is not a valid http(s) URL, skipping first_frame');
+        console.warn(`[Seedance] material ${selectedImage.id} publicUrl is not a valid http(s) URL, skipping first_frame`);
       }
+
+      if (!added) {
+        console.info(`[Seedance] first_frame: no valid image source for material ${selectedImage.id}, using pure prompt`);
+      }
+    } else {
+      console.info('[Seedance] first_frame: no image material found, using pure prompt');
     }
 
     // Add text prompt
@@ -165,6 +181,33 @@ export class Seedance15OfficialAdapter {
       generate_audio: process.env.SEEDANCE_GENERATE_AUDIO === 'true',
       watermark: false,
     };
+  }
+
+  private selectFirstFrameImage(input: SeedanceRenderInput): SeedanceRenderInput['materials'][0] | undefined {
+    const images = input.materials.filter((m) => m.type === 'image');
+    if (images.length === 0) return undefined;
+
+    // Priority 1: User confirmed isPrimary=true
+    const primary = images.find((m) => m.isPrimary === true);
+    if (primary) return primary;
+
+    // Priority 2: AI recommended product_primary role
+    const productPrimary = images.find((m) => m.role === 'product_primary');
+    if (productPrimary) return productPrimary;
+
+    // Priority 3: First image with valid OSS publicUrl
+    const withPublicUrl = images.find((m) => m.publicUrl && this.isPublicHttpUrl(m.publicUrl));
+    if (withPublicUrl) return withPublicUrl;
+
+    // Priority 4: Scene-specific materialId (may lack publicUrl)
+    const sceneMaterialId = input.scenes.find((s) => s.materialId)?.materialId;
+    if (sceneMaterialId) {
+      const sceneImage = images.find((m) => m.id === sceneMaterialId);
+      if (sceneImage) return sceneImage;
+    }
+
+    // Priority 5: First image (for base64 fallback or pure prompt)
+    return images[0];
   }
 
   private isPublicHttpUrl(url: string): boolean {

@@ -3,7 +3,8 @@ import type {
   Seedance15Provider as ISeedance15Provider,
   SeedanceRenderInput,
   SeedanceRenderOutput,
-  SeedanceTaskStatus
+  SeedanceTaskStatus,
+  VideoModelCapabilities
 } from '@shared/types/ai-providers';
 import { Seedance15OfficialAdapter } from './adapters/Seedance15OfficialAdapter';
 
@@ -38,6 +39,10 @@ export class Seedance15Provider implements ISeedance15Provider {
         errorMessage: `Seedance渲染失败：${error instanceof Error ? error.message : '未知错误'}，将自动使用FFmpeg兜底合成`,
       };
     }
+  }
+
+  getCapabilities(): VideoModelCapabilities {
+    return this.adapter.getCapabilities();
   }
 
   async getTaskStatus(taskId: string): Promise<SeedanceTaskStatus> {

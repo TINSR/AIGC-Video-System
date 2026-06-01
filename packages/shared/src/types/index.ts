@@ -17,6 +17,13 @@ export type MaterialRole =
   | "packaging"
   | "other";
 
+export type MaterialRoleAnalysis = {
+  materialId: string;
+  role: MaterialRole;
+  confidence: number;
+  reason: string;
+};
+
 export type Material = {
   id: string;
   productId: string;

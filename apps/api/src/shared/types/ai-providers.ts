@@ -26,9 +26,19 @@ export interface SceneRegenerateInput {
   modifyRequest?: string;
 }
 
+// Video model capabilities contract
+export type VideoModelCapabilities = {
+  supportsFirstFrame: boolean;
+  supportsLastFrame: boolean;
+  supportsReferenceImages: boolean;
+  supportsReferenceVideo: boolean;
+  maxDurationSeconds: number;
+};
+
 export interface Seedance15Provider {
   render(input: SeedanceRenderInput): Promise<SeedanceRenderOutput>;
   getTaskStatus(taskId: string): Promise<SeedanceTaskStatus>;
+  getCapabilities(): VideoModelCapabilities;
 }
 
 export interface SeedanceRenderInput {
@@ -38,6 +48,11 @@ export interface SeedanceRenderInput {
   visualBible: VisualBible;
   resolution?: '1080p' | '4k';
   aspectRatio?: '9:16' | '16:9' | '1:1';
+  // Reserved for Seedance 2.0 multi-frame capabilities
+  firstFrameUrl?: string;
+  lastFrameUrl?: string;
+  referenceImageUrls?: string[];
+  referenceVideoUrl?: string;
 }
 
 export interface SeedanceRenderOutput {

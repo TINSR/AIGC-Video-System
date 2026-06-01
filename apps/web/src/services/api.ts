@@ -3,6 +3,7 @@ import type {
   CreativePlan,
   GenerationTask,
   Material,
+  MaterialRoleAnalysis,
   Product,
   Scene,
   ScriptStyle,
@@ -130,6 +131,23 @@ export const api = {
   async getMaterials(productId: string): Promise<Material[]> {
     if (!USE_MOCK) return request<Material[]>(`/products/${productId}/materials`);
     await wait();
+    return materials.filter((material) => material.productId === productId);
+  },
+  async analyzeMaterialRoles(productId: string): Promise<MaterialRoleAnalysis[]> {
+    if (!USE_MOCK) return request<MaterialRoleAnalysis[]>(`/products/${productId}/materials/analyze-roles`);
+    await wait();
+    return [];
+  },
+  async setPrimaryMaterial(productId: string, materialId: string): Promise<Material[]> {
+    if (!USE_MOCK) {
+      return request<Material[]>(`/products/${productId}/materials/${materialId}/primary`, {
+        method: "PUT"
+      });
+    }
+    await wait();
+    materials.forEach((material) => {
+      if (material.productId === productId) material.isPrimary = material.id === materialId;
+    });
     return materials.filter((material) => material.productId === productId);
   },
   async uploadMaterial(productId: string, file: File): Promise<Material> {

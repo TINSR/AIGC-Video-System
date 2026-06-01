@@ -13,6 +13,8 @@ export function MaterialsPage() {
   const [productMaterials, setProductMaterials] = useState<Material[]>([]);
   const [primaryMaterialId, setPrimaryMaterialId] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [savingPrimaryId, setSavingPrimaryId] = useState<string>();
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -44,10 +46,34 @@ export function MaterialsPage() {
   if (error) return <Alert type="error" showIcon message={error} />;
   if (!product) return <Alert type="warning" showIcon message="暂无商品，请先创建商品。" />;
 
-  const setPrimaryMaterial = (materialId: string) => {
-    window.localStorage.setItem(getPrimaryStorageKey(product.id), materialId);
-    setPrimaryMaterialId(materialId);
-    message.success("商品主图已更新，后续生成将优先使用当前确认主图。");
+  const setPrimaryMaterial = async (materialId: string) => {
+    setSavingPrimaryId(materialId);
+    try {
+      const nextMaterials = await api.setPrimaryMaterial(product.id, materialId);
+      window.localStorage.setItem(getPrimaryStorageKey(product.id), materialId);
+      setProductMaterials(nextMaterials);
+      setPrimaryMaterialId(pickPrimaryMaterialId(nextMaterials, materialId));
+      message.success("商品主图已更新，后续生成将优先使用当前确认主图。");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "设置商品主图失败");
+    } finally {
+      setSavingPrimaryId(undefined);
+    }
+  };
+
+  const analyzeRoles = async () => {
+    setAnalyzing(true);
+    try {
+      await api.analyzeMaterialRoles(product.id);
+      const nextMaterials = await api.getMaterials(product.id);
+      setProductMaterials(nextMaterials);
+      setPrimaryMaterialId(pickPrimaryMaterialId(nextMaterials, window.localStorage.getItem(getPrimaryStorageKey(product.id))));
+      message.success("AI 素材角色分析已完成");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "AI 素材角色分析失败");
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   return (
@@ -60,9 +86,12 @@ export function MaterialsPage() {
             上传后的图片和视频会在这里确认素材角色、云端状态和商品首帧主图。
           </Typography.Paragraph>
         </div>
-        <Link to={`/products/${product.id}/creative-plan`}>
-          <Button type="primary">进入创意方案</Button>
-        </Link>
+        <Space>
+          <Button loading={analyzing} onClick={() => void analyzeRoles()}>AI 分析素材</Button>
+          <Link to={`/products/${product.id}/creative-plan`}>
+            <Button type="primary">进入创意方案</Button>
+          </Link>
+        </Space>
       </section>
       <MaterialUploader
         productId={product.id}
@@ -80,7 +109,12 @@ export function MaterialsPage() {
         <Row gutter={[20, 20]}>
           {productMaterials.map((material) => (
             <Col xs={24} md={12} xl={8} key={material.id}>
-              <MaterialCard material={material} isPrimary={material.id === primaryMaterialId} onSetPrimary={setPrimaryMaterial} />
+              <MaterialCard
+                material={material}
+                isPrimary={material.id === primaryMaterialId}
+                primarySaving={material.id === savingPrimaryId}
+                onSetPrimary={(materialId) => void setPrimaryMaterial(materialId)}
+              />
             </Col>
           ))}
         </Row>

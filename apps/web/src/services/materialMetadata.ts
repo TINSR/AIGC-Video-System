@@ -56,11 +56,10 @@ export function isBackendPrimary(material: Material) {
 }
 
 export function pickPrimaryMaterialId(materials: Material[], storedId?: string | null) {
-  if (storedId && materials.some((material) => material.id === storedId)) return storedId;
   const backendPrimary = materials.find(isBackendPrimary);
   if (backendPrimary) return backendPrimary.id;
+  if (storedId && materials.some((material) => material.id === storedId)) return storedId;
   const aiPrimary = materials.find((material) => material.type === "image" && getMaterialRole(material) === "product_primary");
   if (aiPrimary) return aiPrimary.id;
   return materials.find((material) => material.type === "image")?.id;
 }
-

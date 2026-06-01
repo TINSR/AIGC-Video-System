@@ -1,6 +1,4 @@
 import type { Product, Material, CreativePlan, Scene, VisualBible } from './index';
-export type { VideoModelCapabilities, VideoRenderInput } from './video-provider';
-export { SEEDANCE_15_CAPABILITIES } from './video-provider';
 
 // CreativePlan草稿类型：不含 id/createdAt/status，且分镜使用 SceneDraft
 export type SceneDraft = Omit<Scene, 'id' | 'creativePlanId'>;
@@ -31,10 +29,20 @@ export interface SceneRegenerateInput {
   modifyRequest?: string;
 }
 
+// Video model capabilities contract
+export type VideoModelCapabilities = {
+  supportsFirstFrame: boolean;
+  supportsLastFrame: boolean;
+  supportsReferenceImages: boolean;
+  supportsReferenceVideo: boolean;
+  maxDurationSeconds: number;
+};
+
 // Seedance 1.5 Provider 接口
 export interface Seedance15Provider {
   render(input: SeedanceRenderInput): Promise<SeedanceRenderOutput>;
   getTaskStatus(taskId: string): Promise<SeedanceTaskStatus>;
+  getCapabilities(): VideoModelCapabilities;
 }
 
 export interface SeedanceRenderInput {
@@ -44,6 +52,11 @@ export interface SeedanceRenderInput {
   visualBible: VisualBible;
   resolution?: '1080p' | '4k';
   aspectRatio?: '9:16' | '16:9' | '1:1';
+  // Reserved for Seedance 2.0 multi-frame capabilities
+  firstFrameUrl?: string;
+  lastFrameUrl?: string;
+  referenceImageUrls?: string[];
+  referenceVideoUrl?: string;
 }
 
 export interface SeedanceRenderOutput {

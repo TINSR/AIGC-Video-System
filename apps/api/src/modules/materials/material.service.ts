@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import prisma from '../../config/prisma';
 import { uploadToObjectStorage, isObjectStorageConfigured } from '../../providers/storage/objectStorage';
-import type { Material, MaterialCloudStatus, MaterialRole } from '@shared/types';
+import type { Material, MaterialCloudStatus, MaterialRole, MaterialRoleAnalysis } from '@shared/types';
 
 export const materialStore = new Map<string, Material>();
 
@@ -11,14 +11,6 @@ const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.avi', '.webm']);
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
-
-const MATERIAL_ROLES: MaterialRole[] = [
-  'product_primary',
-  'product_detail',
-  'usage_scene',
-  'packaging',
-  'other',
-];
 
 type MaterialRecord = {
   id: string;
@@ -49,9 +41,6 @@ type EditableMaterialFields = Omit<
     | 'thumbnailUrl'
     | 'publicUrl'
     | 'cloudStatus'
-    | 'role'
-    | 'roleConfidence'
-    | 'roleReason'
   >,
   'publicUrl'
 > & {
@@ -97,9 +86,6 @@ function pickEditableFields(data: Partial<Material> & { publicUrl?: string | nul
   if (typeof data.thumbnailUrl === 'string') editable.thumbnailUrl = data.thumbnailUrl;
   if (typeof data.publicUrl === 'string' || data.publicUrl === null) editable.publicUrl = data.publicUrl;
   if (data.cloudStatus) editable.cloudStatus = data.cloudStatus;
-  if (data.role && MATERIAL_ROLES.includes(data.role)) editable.role = data.role;
-  if (typeof data.roleConfidence === 'number') editable.roleConfidence = data.roleConfidence;
-  if (typeof data.roleReason === 'string') editable.roleReason = data.roleReason;
   return editable;
 }
 
@@ -313,5 +299,87 @@ export class MaterialService {
 
     materialStore.delete(id);
     return true;
+  }
+
+  async analyzeRoles(
+    productId: string,
+    llmCall?: (materials: Material[]) => Promise<MaterialRoleAnalysis[]>
+  ): Promise<MaterialRoleAnalysis[]> {
+    const imageMaterials = (await this.listByProductId(productId)).filter((material) => material.type === 'image');
+    if (imageMaterials.length === 0) return [];
+
+    let analyses: MaterialRoleAnalysis[] = [];
+    if (llmCall) {
+      try {
+        const validIds = new Set(imageMaterials.map((material) => material.id));
+        analyses = (await llmCall(imageMaterials)).filter((analysis) => validIds.has(analysis.materialId));
+      } catch (error) {
+        console.warn('[MaterialService] LLM role analysis failed, falling back to rules:', error);
+      }
+    }
+
+    if (analyses.length === 0) {
+      analyses = this.ruleBasedRoleAnalysis(imageMaterials);
+    }
+
+    for (const analysis of analyses) {
+      try {
+        await prisma.material.update({
+          where: { id: analysis.materialId },
+          data: {
+            role: analysis.role,
+            roleConfidence: analysis.confidence,
+            roleReason: analysis.reason,
+          },
+        });
+      } catch (error) {
+        console.warn('[MaterialService] persist role analysis failed, keeping memory fallback:', error);
+      }
+
+      const existing = materialStore.get(analysis.materialId);
+      if (existing) {
+        materialStore.set(analysis.materialId, {
+          ...existing,
+          role: analysis.role,
+          roleConfidence: analysis.confidence,
+          roleReason: analysis.reason,
+        });
+      }
+    }
+
+    return analyses;
+  }
+
+  private ruleBasedRoleAnalysis(materials: Material[]): MaterialRoleAnalysis[] {
+    return materials.map((material, index) => {
+      const tags = material.tags.map((tag) => tag.toLowerCase());
+      const title = material.title.toLowerCase();
+      let role: MaterialRole = 'other';
+      let reason = 'No role keyword matched';
+
+      if (tags.includes('product') || tags.includes('主图') || tags.includes('商品') || title.includes('product') || title.includes('主图')) {
+        role = 'product_primary';
+        reason = 'Title or tags indicate a product overview image';
+      } else if (tags.includes('detail') || tags.includes('细节') || title.includes('detail')) {
+        role = 'product_detail';
+        reason = 'Title or tags indicate a detail image';
+      } else if (tags.includes('scene') || tags.includes('场景') || title.includes('scene')) {
+        role = 'usage_scene';
+        reason = 'Title or tags indicate a usage scene';
+      } else if (tags.includes('packaging') || tags.includes('包装') || title.includes('pack')) {
+        role = 'packaging';
+        reason = 'Title or tags indicate packaging';
+      } else if (index === 0) {
+        role = 'product_primary';
+        reason = 'First uploaded image used as rule-based default';
+      }
+
+      return {
+        materialId: material.id,
+        role,
+        confidence: role === 'other' ? 0.3 : 0.6,
+        reason,
+      };
+    });
   }
 }
