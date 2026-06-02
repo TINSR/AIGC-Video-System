@@ -1,4 +1,12 @@
-import type { Product, Material, CreativePlan, Scene, VisualBible, ReferenceVideoAnalysis } from './index';
+import type {
+  Product,
+  Material,
+  CreativePlan,
+  Scene,
+  VisualBible,
+  ReferenceVideoAnalysis,
+  InspirationTemplateGenerationContext,
+} from './index';
 
 // CreativePlan草稿类型：不含 id/createdAt/status，且分镜使用 SceneDraft
 export type SceneDraft = Omit<Scene, 'id' | 'creativePlanId'>;
@@ -21,6 +29,8 @@ export interface CreativePlanInput {
   maxDuration?: number;
   referenceVideoId?: string;
   referenceVideoAnalysis?: ReferenceVideoAnalysis;
+  templateId?: string;
+  inspirationTemplate?: InspirationTemplateGenerationContext;
 }
 
 export interface SceneRegenerateInput {

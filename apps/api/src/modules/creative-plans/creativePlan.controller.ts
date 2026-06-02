@@ -3,6 +3,7 @@ import { CreativePlanService } from './creativePlan.service';
 import { RenderService } from '../render/render.service';
 import { MaterialService } from '../materials/material.service';
 import { ReferenceVideoService } from '../reference-videos/referenceVideo.service';
+import { InspirationTemplateService } from '../inspiration-templates/inspirationTemplate.service';
 import * as productService from '../products/product.service';
 import { planStore } from '../../memory-store';
 import type { ApiResponse, CreativePlan, Product, Material, Scene, GenerationTask } from '@shared/types';
@@ -54,19 +55,21 @@ export class CreativePlanController {
   private renderService: RenderService;
   private materialService: MaterialService;
   private referenceVideoService: ReferenceVideoService;
+  private inspirationTemplateService: InspirationTemplateService;
 
   constructor() {
     this.creativePlanService = new CreativePlanService();
     this.renderService = new RenderService();
     this.materialService = new MaterialService();
     this.referenceVideoService = new ReferenceVideoService();
+    this.inspirationTemplateService = new InspirationTemplateService();
   }
 
   // 生成创意方案
   generate = async (req: Request, res: Response<ApiResponse<CreativePlan>>) => {
     try {
       const { productId } = req.params;
-      const { style, maxDuration, referenceVideoId } = req.body;
+      const { style, maxDuration, referenceVideoId, templateId } = req.body;
 
       let product = productId === demoProduct.id ? demoProduct : { ...demoProduct, id: productId };
       try {
@@ -103,6 +106,20 @@ export class CreativePlanController {
         }
       }
 
+      let inspirationTemplate;
+      if (typeof templateId === 'string' && templateId.trim()) {
+        inspirationTemplate = await this.inspirationTemplateService.getGenerationContext(templateId.trim());
+        if (!inspirationTemplate) {
+          return res.status(400).json({
+            success: false,
+            error: {
+              code: 'TEMPLATE_NOT_FOUND',
+              message: '所选模板不存在或不可用',
+            },
+          });
+        }
+      }
+
       const creativePlan = await this.creativePlanService.generateCreativePlan({
         product,
         materials,
@@ -110,6 +127,8 @@ export class CreativePlanController {
         maxDuration,
         referenceVideoId: typeof referenceVideoId === 'string' ? referenceVideoId.trim() : undefined,
         referenceVideoAnalysis,
+        templateId: typeof templateId === 'string' ? templateId.trim() : undefined,
+        inspirationTemplate,
       });
 
       res.json({
