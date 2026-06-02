@@ -1,4 +1,12 @@
-import type { Product, Material, CreativePlan, Scene, VisualBible, ReferenceVideoAnalysis } from '../types';
+import type {
+  Product,
+  Material,
+  CreativePlan,
+  Scene,
+  VisualBible,
+  ReferenceVideoAnalysis,
+  InspirationTemplateGenerationContext,
+} from '../types';
 
 export type SceneDraft = Omit<Scene, 'id' | 'creativePlanId'>;
 
@@ -18,6 +26,8 @@ export interface CreativePlanInput {
   maxDuration?: number;
   referenceVideoId?: string;
   referenceVideoAnalysis?: ReferenceVideoAnalysis;
+  templateId?: string;
+  inspirationTemplate?: InspirationTemplateGenerationContext;
 }
 
 export interface SceneRegenerateInput {

@@ -70,6 +70,7 @@ function mapSceneFromDb(scene: {
 function mapCreativePlanFromDb(dbPlan: {
   id: string;
   productId: string;
+  templateId?: string | null;
   status: string;
   style: string;
   title: string;
@@ -92,6 +93,7 @@ function mapCreativePlanFromDb(dbPlan: {
   return {
     id: dbPlan.id,
     productId: dbPlan.productId,
+    templateId: dbPlan.templateId ?? undefined,
     status: dbPlan.status as CreativePlan['status'],
     style: dbPlan.style as CreativePlan['style'],
     title: dbPlan.title,
@@ -159,6 +161,7 @@ export class CreativePlanService {
       complianceWarnings: complianceWarnings.map(w => w.message),
       continuityWarnings: continuityWarnings.map(w => w.message),
       status: 'draft',
+      templateId: input.templateId,
       createdAt: now,
       scenes: planDraft.scenes.map((scene) => ({
         ...scene,
@@ -173,6 +176,7 @@ export class CreativePlanService {
         data: {
           id: creativePlan.id,
           productId: creativePlan.productId,
+          templateId: creativePlan.templateId ?? null,
           status: creativePlan.status,
           style: creativePlan.style,
           title: creativePlan.title,
@@ -319,6 +323,7 @@ export class CreativePlanService {
     if (!existing) return null;
 
     const allowedScalarFields: (keyof CreativePlan)[] = [
+      'templateId',
       'title', 'hook', 'adCopy', 'cta',
       'complianceWarnings', 'continuityWarnings',
     ];
@@ -396,6 +401,7 @@ export class CreativePlanService {
     // 尝试更新数据库
     try {
       const updateData: any = {
+        templateId: existing.templateId ?? null,
         title: existing.title,
         hook: existing.hook,
         adCopy: existing.adCopy,

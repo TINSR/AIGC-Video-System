@@ -44,6 +44,7 @@ model Material {
 model CreativePlan {
   id                 String           @id @default(cuid())
   productId          String
+  templateId         String?
   status             String
   style              String
   title              String
@@ -133,4 +134,23 @@ model ReferenceVideo {
   errorMessage   String?  @db.Text
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model InspirationTemplate {
+  id                String   @id @default(cuid())
+  name              String
+  category          String?
+  description       String   @db.Text
+  strategy          String   @db.Text
+  hookType          String
+  style             String
+  factors           Json
+  constraints       Json
+  sceneGoals        Json
+  tags              Json
+  referenceVideoIds Json
+  sourceMode        String
+  status            String   @default("active")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
