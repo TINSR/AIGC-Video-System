@@ -56,4 +56,3 @@ export function InspirationTemplateCard({ template }: Props) {
     </article>
   );
 }
-

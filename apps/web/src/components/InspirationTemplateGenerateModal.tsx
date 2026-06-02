@@ -14,7 +14,6 @@ function parseIds(value?: string) {
     .map((item) => item.trim())
     .filter(Boolean);
 }
-
 export function InspirationTemplateGenerateModal({ open, onClose, onGenerated }: Props) {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -61,4 +60,3 @@ export function InspirationTemplateGenerateModal({ open, onClose, onGenerated }:
     </Modal>
   );
 }
-

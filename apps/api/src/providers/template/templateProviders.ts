@@ -23,26 +23,39 @@ export interface ITemplateRecommendationProvider {
   }): Promise<InspirationTemplateRecommendation[]>;
 }
 
-class PlaceholderTemplateClusteringProvider implements ITemplateClusteringProvider {
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+class RuleBasedTemplateClusteringProvider implements ITemplateClusteringProvider {
   async cluster(input: { referenceVideos: ReferenceVideo[]; category?: string }): Promise<InspirationTemplateDraft[]> {
-    const first = input.referenceVideos[0];
-    if (!first?.analysis) return [];
-    return [
-      {
-        name: `${input.category || first.category}-规则归纳模板`,
-        category: input.category || first.category,
-        description: `基于 ${input.referenceVideos.length} 条已分析参考视频归纳的模板`,
-        strategy: first.analysis.summary,
-        hookType: first.analysis.hookType,
-        style: first.analysis.style,
-        factors: first.analysis.sellingPoints,
+    const groups = new Map<string, ReferenceVideo[]>();
+    for (const video of input.referenceVideos) {
+      if (!video.analysis) continue;
+      const sceneGoals = video.analysis.scenes.map((scene) => scene.goal);
+      const key = [video.analysis.hookType, video.analysis.ctaType, ...sceneGoals].join('|');
+      groups.set(key, [...(groups.get(key) ?? []), video]);
+    }
+
+    return Array.from(groups.values()).map((videos, index) => {
+      const first = videos[0];
+      const analysis = first.analysis!;
+      const category = input.category || first.category;
+      return {
+        name: `${category}-规则归纳模板-${index + 1}`,
+        category,
+        description: `基于 ${videos.length} 条已分析参考视频归纳的模板`,
+        strategy: unique(videos.map((video) => video.analysis!.summary)).join(' / '),
+        hookType: analysis.hookType,
+        style: analysis.style,
+        factors: unique(videos.flatMap((video) => video.analysis!.sellingPoints)),
         constraints: ['避免绝对化表达', '保留电商 CTA'],
-        sceneGoals: first.analysis.scenes.map((scene) => scene.goal),
-        tags: first.analysis.keywords,
-        referenceVideoIds: input.referenceVideos.map((item) => item.id),
+        sceneGoals: analysis.scenes.map((scene) => scene.goal),
+        tags: unique(videos.flatMap((video) => video.analysis!.keywords)),
+        referenceVideoIds: videos.map((video) => video.id),
         sourceMode: 'rule_generated',
-      },
-    ];
+      };
+    });
   }
 }
 
@@ -89,7 +102,7 @@ class PlaceholderTemplateRecommendationProvider implements ITemplateRecommendati
 }
 
 export function createTemplateClusteringProvider(): ITemplateClusteringProvider {
-  return new PlaceholderTemplateClusteringProvider();
+  return new RuleBasedTemplateClusteringProvider();
 }
 
 export function createTemplateRecommendationProvider(): ITemplateRecommendationProvider {

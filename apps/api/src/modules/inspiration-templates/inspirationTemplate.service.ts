@@ -203,7 +203,7 @@ export class InspirationTemplateService {
 
   async getGenerationContext(templateId: string): Promise<InspirationTemplateGenerationContext | undefined> {
     const template = await this.getById(templateId);
-    if (!template) return undefined;
+    if (!template || template.status !== 'active') return undefined;
     return {
       id: template.id,
       name: template.name,
