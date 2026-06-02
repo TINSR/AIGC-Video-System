@@ -8,6 +8,12 @@ const CreativePlanPage = lazy(() =>
   import("./pages/CreativePlanPage").then((module) => ({ default: module.CreativePlanPage }))
 );
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
+const InspirationTemplateDetailPage = lazy(() =>
+  import("./pages/InspirationTemplateDetailPage").then((module) => ({ default: module.InspirationTemplateDetailPage }))
+);
+const InspirationTemplateLibraryPage = lazy(() =>
+  import("./pages/InspirationTemplateLibraryPage").then((module) => ({ default: module.InspirationTemplateLibraryPage }))
+);
 const MaterialsPage = lazy(() => import("./pages/MaterialsPage").then((module) => ({ default: module.MaterialsPage })));
 const ProductNewPage = lazy(() =>
   import("./pages/ProductNewPage").then((module) => ({ default: module.ProductNewPage }))
@@ -40,6 +46,8 @@ const router = createBrowserRouter([
       { path: "videos/:videoId", element: lazyPage(<VideoPage />) },
       { path: "reference-videos", element: lazyPage(<ReferenceVideoLibraryPage />) },
       { path: "reference-videos/:id", element: lazyPage(<ReferenceVideoDetailPage />) },
+      { path: "inspiration-templates", element: lazyPage(<InspirationTemplateLibraryPage />) },
+      { path: "inspiration-templates/:id", element: lazyPage(<InspirationTemplateDetailPage />) },
       { path: "analytics", element: lazyPage(<AnalyticsPage />) },
       { path: "*", element: <Navigate to="/" replace /> }
     ]

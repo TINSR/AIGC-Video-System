@@ -2,6 +2,10 @@ import type {
   AnalyticsOverview,
   CreativePlan,
   GenerationTask,
+  InspirationTemplate,
+  InspirationTemplateRecommendation,
+  InspirationTemplateSourceMode,
+  InspirationTemplateStatus,
   Material,
   MaterialRoleAnalysis,
   Product,
@@ -55,6 +59,11 @@ export type ReferenceVideoUploadMetadata = Omit<ReferenceVideoCreateInput, "sour
   sourceType: "merchant_owned";
 };
 
+export type InspirationTemplateGenerateInput = {
+  category?: string;
+  referenceVideoIds?: string[];
+};
+
 export function resolveAssetUrl(path?: string): string | undefined {
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path)) return path;
@@ -89,6 +98,10 @@ const wait = (ms = 180) => new Promise((resolve) => window.setTimeout(resolve, m
 
 function referenceVideoApiUnavailable(): never {
   throw new Error("参考视频库需要真实后端 API。请设置 VITE_USE_MOCK=false 后连接 Day12 ReferenceVideo 服务。");
+}
+
+function inspirationTemplateApiUnavailable(): never {
+  throw new Error("灵感模板库需要真实后端 API。请设置 VITE_USE_MOCK=false 后连接 Day13 InspirationTemplate 服务。");
 }
 
 export const api = {
@@ -201,7 +214,7 @@ export const api = {
   },
   async generateCreativePlan(
     productId: string,
-    input: { style: ScriptStyle; merchantAdCopy: string; maxDuration: number; referenceVideoId?: string }
+    input: { style: ScriptStyle; merchantAdCopy: string; maxDuration: number; referenceVideoId?: string; templateId?: string }
   ): Promise<CreativePlan> {
     if (!USE_MOCK) {
       return request<CreativePlan>(`/products/${productId}/creative-plans/generate`, {
@@ -210,7 +223,55 @@ export const api = {
       });
     }
     await wait(400);
-    return { ...creativePlans[0], productId, style: input.style };
+    return { ...creativePlans[0], productId, style: input.style, templateId: input.templateId };
+  },
+  async getInspirationTemplates(query?: {
+    category?: string;
+    keyword?: string;
+    sourceMode?: InspirationTemplateSourceMode;
+    status?: InspirationTemplateStatus;
+  }): Promise<InspirationTemplate[]> {
+    if (!USE_MOCK) {
+      const params = new URLSearchParams();
+      Object.entries(query ?? {}).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+      });
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      return request<InspirationTemplate[]>(`/inspiration-templates${suffix}`);
+    }
+    await wait();
+    return [];
+  },
+  async getInspirationTemplate(id: string): Promise<InspirationTemplate> {
+    if (!USE_MOCK) return request<InspirationTemplate>(`/inspiration-templates/${id}`);
+    await wait();
+    return inspirationTemplateApiUnavailable();
+  },
+  async seedBuiltInInspirationTemplates(): Promise<InspirationTemplate[]> {
+    if (!USE_MOCK) {
+      return request<InspirationTemplate[]>("/inspiration-templates/seed-builtins", {
+        method: "POST"
+      });
+    }
+    await wait();
+    return inspirationTemplateApiUnavailable();
+  },
+  async generateInspirationTemplates(input: InspirationTemplateGenerateInput): Promise<InspirationTemplate[]> {
+    if (!USE_MOCK) {
+      return request<InspirationTemplate[]>("/inspiration-templates/generate", {
+        method: "POST",
+        body: JSON.stringify(input)
+      });
+    }
+    await wait();
+    return inspirationTemplateApiUnavailable();
+  },
+  async getInspirationTemplateRecommendations(productId: string): Promise<InspirationTemplateRecommendation[]> {
+    if (!USE_MOCK) {
+      return request<InspirationTemplateRecommendation[]>(`/products/${productId}/inspiration-templates/recommendations`);
+    }
+    await wait();
+    return [];
   },
   async getReferenceVideos(): Promise<ReferenceVideo[]> {
     if (!USE_MOCK) return request<ReferenceVideo[]>("/reference-videos");
