@@ -297,9 +297,64 @@ export type ApiResponse<T> = {
 
 export * from "./video-provider";
 
+export type CommerceMetricsPlatform = "mock" | "douyin_shop" | "tiktok_shop";
+export type CommerceMetricsSource = "mock_seed" | "csv_import" | "provider_sync";
+
+export type VideoPerformanceMetric = {
+  id: string;
+  videoId: string;
+  taskId?: string;
+  creativePlanId?: string;
+  templateId?: string;
+  platform: CommerceMetricsPlatform;
+  source: CommerceMetricsSource;
+  plays: number;
+  clicks: number;
+  conversions: number;
+  averageWatchRate: number;
+  collectedAt: string;
+  createdAt: string;
+};
+
+export type MetricsImportBatch = {
+  id: string;
+  source: CommerceMetricsSource;
+  fileName?: string;
+  totalRows: number;
+  acceptedRows: number;
+  rejectedRows: number;
+  errors: Array<{
+    row: number;
+    message: string;
+  }>;
+  createdAt: string;
+};
+
+export type TemplatePerformanceSummary = {
+  templateId?: string;
+  templateName: string;
+  sampleCount: number;
+  plays: number;
+  clicks: number;
+  conversions: number;
+  clickRate: number;
+  conversionRate: number;
+  averageWatchRate: number;
+  score: number;
+};
+
+export type TemplatePerformanceComparison = {
+  left: TemplatePerformanceSummary;
+  right: TemplatePerformanceSummary;
+  winnerTemplateId?: string;
+  reasons: string[];
+};
+
 export type AnalyticsOverview = {
   totalPlays: number;
   totalClicks: number;
+  totalConversions: number;
+  clickRate: number;
   conversionRate: number;
   averageWatchRate: number;
   dailyTrend: Array<{
@@ -308,10 +363,5 @@ export type AnalyticsOverview = {
     clicks: number;
     conversions: number;
   }>;
-  abTests: Array<{
-    name: string;
-    versionA: number;
-    versionB: number;
-    winner: "A" | "B";
-  }>;
+  templatePerformance: TemplatePerformanceSummary[];
 };
