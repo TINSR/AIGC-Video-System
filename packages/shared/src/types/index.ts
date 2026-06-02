@@ -210,6 +210,7 @@ export type CreativePlan = {
   strategyId?: string;
   version?: number;
   parentPlanId?: string;
+  templateId?: string;
   style: ScriptStyle;
   title: string;
   hook: string;

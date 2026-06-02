@@ -1,5 +1,6 @@
 import {
   BarChartOutlined,
+  BulbOutlined,
   DashboardOutlined,
   FolderAddOutlined,
   VideoCameraOutlined,
@@ -12,6 +13,7 @@ const items = [
   { key: "/", icon: <DashboardOutlined />, label: "工作台" },
   { key: "/products/new", icon: <FolderAddOutlined />, label: "创建商品任务" },
   { key: "/reference-videos", icon: <VideoCameraOutlined />, label: "参考视频库" },
+  { key: "/inspiration-templates", icon: <BulbOutlined />, label: "灵感模板库" },
   { key: "/analytics", icon: <BarChartOutlined />, label: "数据看板" },
 ] satisfies NonNullable<MenuProps["items"]>;
 
