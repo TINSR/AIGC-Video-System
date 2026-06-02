@@ -154,3 +154,34 @@ model InspirationTemplate {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
+model VideoPerformanceMetric {
+  id               String   @id @default(cuid())
+  videoId          String
+  taskId           String?
+  creativePlanId   String?
+  templateId       String?
+  platform         String
+  source           String
+  plays            Int
+  clicks           Int
+  conversions      Int
+  averageWatchRate Float
+  collectedAt      DateTime
+  createdAt        DateTime @default(now())
+
+  @@index([templateId])
+  @@index([source])
+  @@index([collectedAt])
+}
+
+model MetricsImportBatch {
+  id           String   @id @default(cuid())
+  source       String
+  fileName     String?
+  totalRows    Int
+  acceptedRows Int
+  rejectedRows Int
+  errors       Json
+  createdAt    DateTime @default(now())
+}
