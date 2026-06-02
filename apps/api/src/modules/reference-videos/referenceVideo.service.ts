@@ -7,7 +7,7 @@ import { uploadToObjectStorage, isObjectStorageConfigured } from '../../provider
 import { ManualUrlReferenceVideoImportProvider } from '../../providers/reference-video/ManualUrlReferenceVideoImportProvider';
 import { createReferenceVideoAnalysisProvider } from '../../providers/reference-video/DoubaoReferenceVideoAnalysisProvider';
 import { truncateErrorMessage } from '../../providers/reference-video/referenceVideoAnalysisSchema';
-import { isPublicHttpUrl } from '../../utils/publicUrlValidation';
+import { assertPublicHttpUrlWithDns, isPublicHttpUrl } from '../../utils/publicUrlValidation';
 import type { MaterialCloudStatus, ReferenceVideo, ReferenceVideoAnalysis } from '@shared/types';
 import {
   mapReferenceVideo,
@@ -16,7 +16,7 @@ import {
 } from './referenceVideo.types';
 
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.avi', '.webm']);
-const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 export const referenceVideoStore = new Map<string, ReferenceVideo>();
 
@@ -51,6 +51,7 @@ export class ReferenceVideoService {
       platform: input.sourcePlatform,
       sourceUrl: input.sourceUrl.trim(),
     });
+    await assertPublicHttpUrlWithDns(imported.playableUrl ?? input.sourceUrl.trim(), 'sourceUrl');
 
     const id = randomUUID();
     const now = new Date();
@@ -91,7 +92,7 @@ export class ReferenceVideoService {
       throw new Error('不支持的文件类型，仅支持 mp4/mov/avi/webm');
     }
     if (file.size > MAX_VIDEO_BYTES) {
-      throw new Error('文件超过大小限制（200MB）');
+      throw new Error('文件超过大小限制（50MB）');
     }
 
     const id = randomUUID();
@@ -207,6 +208,15 @@ export class ReferenceVideoService {
       return this.updateAnalysisState(id, {
         analysisStatus: 'failed',
         errorMessage: '无法分析：视频 URL 不是有效的公网 http/https 地址',
+      });
+    }
+
+    try {
+      await assertPublicHttpUrlWithDns(playableUrl, '视频 URL');
+    } catch (error) {
+      return this.updateAnalysisState(id, {
+        analysisStatus: 'failed',
+        errorMessage: error instanceof Error ? error.message : '无法分析：视频 URL 校验失败',
       });
     }
 

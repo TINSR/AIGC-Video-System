@@ -240,14 +240,24 @@ export class CreativePlanPipeline {
 
   private creativeStrategyAgent(ctx: PipelineContext, analysis: ProductAnalysis): PipelineStrategy {
     const start = now();
+    const ref = ctx.referenceVideoAnalysis;
+    const sellingPointOrder = ref?.sellingPoints.length
+      ? [...ref.sellingPoints, ...analysis.sellingPoints].slice(0, analysis.sellingPoints.length)
+      : analysis.sellingPoints;
+    const emotionalArc = ref?.scenes.length
+      ? ref.scenes.map((scene) => scene.goal).join(' -> ')
+      : '痛点引入 -> 解决方案 -> 效果展示 -> 促单转化';
+    const sceneCount = ref?.scenes.length
+      ? Math.min(4, Math.max(1, ref.scenes.length))
+      : Math.min(4, Math.max(1, analysis.sellingPoints.length + 1));
 
     const strategy: PipelineStrategy = {
       videoGoal: `展示${ctx.product.title}的核心卖点，引导${analysis.targetUsers}购买`,
       targetAudience: analysis.targetUsers,
-      sellingPointOrder: analysis.sellingPoints,
-      emotionalArc: '痛点引入 -> 解决方案 -> 效果展示 -> 促单转化',
-      styleDirection: ctx.style as string,
-      sceneCount: Math.min(4, Math.max(1, analysis.sellingPoints.length + 1)),
+      sellingPointOrder,
+      emotionalArc,
+      styleDirection: ref?.style || ctx.style as string,
+      sceneCount,
     };
 
     ctx.trace.push({
@@ -336,6 +346,7 @@ export class CreativePlanPipeline {
   ): SceneDraft[] {
     const start = now();
     const { product, materials } = ctx;
+    const ref = ctx.referenceVideoAnalysis;
     const goals = getSceneGoals(strategy.sceneCount);
     const imageMaterials = materials.filter(m => m.type === 'image');
     const videoMaterials = materials.filter(m => m.type === 'video');
@@ -380,17 +391,20 @@ export class CreativePlanPipeline {
       const tmpl = sceneTemplates[i] || sceneTemplates[sceneTemplates.length - 1];
       const materialId = this.pickMaterialForScene(i, imageMaterials, videoMaterials);
       const materialUsage = this.resolveMaterialUsage(materialId, materials);
+      const refScene = ref?.scenes[i];
 
       scenes.push({
         order: i + 1,
         duration: tmpl.duration,
-        visualDescription: tmpl.visualDescription,
+        visualDescription: refScene?.summary
+          ? `${tmpl.visualDescription}（参考结构：${refScene.summary}）`
+          : tmpl.visualDescription,
         subtitle: tmpl.subtitle,
         voiceover: tmpl.voiceover,
         seedancePrompt: '', // will be filled by SeedancePromptAgent
         materialId,
         materialUsage,
-        goal: goals[i] || tmpl.goal,
+        goal: refScene?.goal ? this.mapReferenceGoalToSceneGoal(refScene.goal) : goals[i] || tmpl.goal,
         warnings: [],
         transition: tmpl.transition,
       });
@@ -404,6 +418,26 @@ export class CreativePlanPipeline {
     });
 
     return scenes;
+  }
+
+  private mapReferenceGoalToSceneGoal(goal: string): SceneGoal {
+    const mapping: Record<string, SceneGoal> = {
+      hook: 'hook',
+      '开场': 'hook',
+      '吸引': 'hook',
+      feature: 'feature',
+      '功能': 'feature',
+      '展示': 'feature',
+      proof: 'proof',
+      '证明': 'proof',
+      '效果': 'proof',
+      cta: 'cta',
+      '转化': 'cta',
+      '促单': 'cta',
+      full_demo: 'full_demo',
+      '演示': 'full_demo',
+    };
+    return mapping[goal.toLowerCase().trim()] || 'feature';
   }
 
   // ─── Stage 6: SeedancePromptAgent ────────────────────────────

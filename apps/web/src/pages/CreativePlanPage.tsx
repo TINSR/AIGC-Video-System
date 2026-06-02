@@ -1,6 +1,6 @@
 import { Alert, Button, Form, Input, Space, Spin, Table, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { CreativePlan, Product, ScriptStyle } from "@clipshop/shared";
 import { PlanGenerationProgress } from "../components/PlanGenerationProgress";
 import { StyleTemplateSelector } from "../components/StyleTemplateSelector";
@@ -9,6 +9,8 @@ import { api } from "../services/api";
 export function CreativePlanPage() {
   const { productId = "product_001" } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const referenceVideoId = searchParams.get("referenceVideoId")?.trim() || undefined;
   const [product, setProduct] = useState<Product>();
   const [plans, setPlans] = useState<CreativePlan[]>([]);
   const [style, setStyle] = useState<ScriptStyle>("pain_point");
@@ -44,7 +46,7 @@ export function CreativePlanPage() {
     setGenerating(true);
     setError(undefined);
     try {
-      const plan = await api.generateCreativePlan(product.id, { style, merchantAdCopy, maxDuration: 15 });
+      const plan = await api.generateCreativePlan(product.id, { style, merchantAdCopy, maxDuration: 15, referenceVideoId });
       message.success("CreativePlan 已生成");
       setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)]);
       navigate(`/creative-plans/${plan.id}/review`);
@@ -73,6 +75,14 @@ export function CreativePlanPage() {
         </div>
       </section>
       {error ? <Alert type="error" showIcon message={error} /> : null}
+      {referenceVideoId ? (
+        <Alert
+          type="info"
+          showIcon
+          message="已选择参考视频"
+          description={`生成时将注入 referenceVideoId=${referenceVideoId} 的结构化拆解结果。`}
+        />
+      ) : null}
       {generating ? <PlanGenerationProgress active={generating} /> : null}
       <Table
         className="surface"

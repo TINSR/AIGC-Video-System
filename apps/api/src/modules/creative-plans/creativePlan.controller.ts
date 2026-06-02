@@ -93,7 +93,13 @@ export class CreativePlanController {
       if (typeof referenceVideoId === 'string' && referenceVideoId.trim()) {
         referenceVideoAnalysis = await this.referenceVideoService.getAnalysisForGenerate(referenceVideoId.trim());
         if (!referenceVideoAnalysis) {
-          console.warn(`[CreativePlanController] referenceVideoId=${referenceVideoId} 不可用或未分析成功，已忽略`);
+          return res.status(400).json({
+            success: false,
+            error: {
+              code: 'REFERENCE_VIDEO_NOT_READY',
+              message: '所选参考视频不存在或尚未分析成功，请先完成参考视频分析',
+            },
+          });
         }
       }
 

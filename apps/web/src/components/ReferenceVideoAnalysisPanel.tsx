@@ -92,4 +92,3 @@ export function ReferenceVideoAnalysisPanel({ video }: Props) {
     </Space>
   );
 }
-

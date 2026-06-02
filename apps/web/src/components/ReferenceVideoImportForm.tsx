@@ -30,17 +30,24 @@ function parseKeywords(value?: string) {
     .map((item) => item.trim())
     .filter(Boolean);
 }
-
 function isPrivateHost(hostname: string) {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname.startsWith("10.") ||
-    hostname.startsWith("192.168.") ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized === "0.0.0.0" ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("10.") ||
+    normalized.startsWith("192.168.") ||
+    normalized.startsWith("169.254.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized) ||
+    normalized === "::" ||
+    normalized === "::1" ||
+    /^f[cd]/.test(normalized) ||
+    /^fe[89ab]/.test(normalized) ||
+    normalized.startsWith("::ffff:")
   );
 }
-
 function validatePlayableVideoUrl(raw?: string) {
   if (!raw) return Promise.reject(new Error("请输入可直接访问的视频文件 URL"));
   try {
@@ -183,4 +190,3 @@ export function ReferenceVideoImportForm({ onCreated }: Props) {
     </div>
   );
 }
-

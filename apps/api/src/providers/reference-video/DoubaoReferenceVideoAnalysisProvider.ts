@@ -16,8 +16,6 @@ type ContentPart =
 
 export class DoubaoReferenceVideoAnalysisProvider implements IReferenceVideoAnalysisProvider {
   private config: VideoAnalysisConfig | null;
-  private fallback: MockReferenceVideoAnalysisProvider;
-
   constructor() {
     const apiKey = process.env.REFERENCE_VIDEO_ANALYSIS_API_KEY || process.env.REAL_LLM_API_KEY;
     this.config = apiKey
@@ -28,7 +26,6 @@ export class DoubaoReferenceVideoAnalysisProvider implements IReferenceVideoAnal
           timeoutMs: Math.max(Number(process.env.REFERENCE_VIDEO_ANALYSIS_TIMEOUT_MS) || 120000, 10000),
         }
       : null;
-    this.fallback = new MockReferenceVideoAnalysisProvider();
   }
 
   isConfigured(): boolean {
@@ -37,7 +34,7 @@ export class DoubaoReferenceVideoAnalysisProvider implements IReferenceVideoAnal
 
   async analyze(playableUrl: string, context: { title: string; category: string }): Promise<ReferenceVideoAnalysis> {
     if (!this.config || !this.config.model) {
-      return this.fallback.analyze(playableUrl, context);
+      throw new Error('参考视频分析模型未配置，请设置 REFERENCE_VIDEO_ANALYSIS_API_KEY 和 REFERENCE_VIDEO_ANALYSIS_MODEL');
     }
 
     const controller = new AbortController();
@@ -51,7 +48,7 @@ schema:
   "hookType": "开场类型，如 pain_point_question / scenario / testimonial",
   "sellingPoints": ["卖点1","卖点2"],
   "style": "视频风格",
-  "scenes": [{"startTime":"00:00","endTime":"00:03","goal":"hook","summary":"分镜说明"}],
+  "scenes": [{"startTime":"00:00:00","endTime":"00:00:03","goal":"hook","summary":"分镜说明"}],
   "ctaType": "cta 类型，如 shop_now / learn_more",
   "keywords": ["关键词"]
 }
@@ -130,5 +127,10 @@ schema:
 
 export function createReferenceVideoAnalysisProvider(): IReferenceVideoAnalysisProvider {
   const doubao = new DoubaoReferenceVideoAnalysisProvider();
-  return doubao.isConfigured() ? doubao : new MockReferenceVideoAnalysisProvider();
+  if (doubao.isConfigured()) return doubao;
+  if (process.env.REFERENCE_VIDEO_ANALYSIS_ALLOW_MOCK === 'true') {
+    console.warn('[ReferenceVideoAnalysis] using explicit Mock provider');
+    return new MockReferenceVideoAnalysisProvider();
+  }
+  return doubao;
 }

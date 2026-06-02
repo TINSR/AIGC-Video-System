@@ -7,7 +7,7 @@ const controller = new ReferenceVideoController();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 200 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
     if (allowed.includes(file.mimetype)) {

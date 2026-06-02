@@ -252,50 +252,6 @@ export type WorkspaceTaskItem = {
   nextAction: WorkspaceNextAction;
 };
 
-export type ReferenceVideoSourcePlatform =
-  | "douyin_shop"
-  | "tiktok_shop"
-  | "instagram"
-  | "facebook"
-  | "merchant_upload"
-  | "other";
-
-export type ReferenceVideoSourceType =
-  | "merchant_owned"
-  | "licensed_public"
-  | "public_reference";
-
-export type ReferenceVideoAnalysis = {
-  summary: string;
-  hookType: string;
-  sellingPoints: string[];
-  style: string;
-  scenes: Array<{
-    startTime: string;
-    endTime: string;
-    goal: string;
-    summary: string;
-  }>;
-  ctaType: string;
-  keywords: string[];
-};
-
-export type ReferenceVideo = {
-  id: string;
-  title: string;
-  sourcePlatform: ReferenceVideoSourcePlatform;
-  sourceType: ReferenceVideoSourceType;
-  sourceUrl?: string;
-  sourceNote?: string;
-  category: string;
-  keywords: string[];
-  analysisStatus: "pending" | "running" | "success" | "failed";
-  analysis?: ReferenceVideoAnalysis;
-  errorMessage?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type ApiResponse<T> = {
   success: boolean;
   data?: T;
