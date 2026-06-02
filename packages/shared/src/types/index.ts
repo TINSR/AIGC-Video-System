@@ -61,6 +61,39 @@ export type ReferenceVideo = {
   updatedAt: string;
 };
 
+export type InspirationTemplateSourceMode = "built_in" | "rule_generated" | "manual";
+export type InspirationTemplateStatus = "active" | "archived";
+
+export type InspirationTemplate = {
+  id: string;
+  name: string;
+  category?: string;
+  description: string;
+  strategy: string;
+  hookType: string;
+  style: string;
+  factors: string[];
+  constraints: string[];
+  sceneGoals: string[];
+  tags: string[];
+  referenceVideoIds: string[];
+  sourceMode: InspirationTemplateSourceMode;
+  status: InspirationTemplateStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InspirationTemplateGenerationContext = Pick<
+  InspirationTemplate,
+  "id" | "name" | "strategy" | "hookType" | "style" | "factors" | "constraints" | "sceneGoals"
+>;
+
+export type InspirationTemplateRecommendation = {
+  template: InspirationTemplate;
+  score: number;
+  reasons: string[];
+};
+
 export type MaterialRole =
   | "product_primary"
   | "product_detail"
@@ -176,6 +209,7 @@ export type CreativePlan = {
   strategyId?: string;
   version?: number;
   parentPlanId?: string;
+  templateId?: string;
   style: ScriptStyle;
   title: string;
   hook: string;

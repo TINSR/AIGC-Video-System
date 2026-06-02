@@ -1,7 +1,8 @@
 import { Alert, Button, Form, Input, Space, Spin, Table, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { CreativePlan, Product, ScriptStyle } from "@clipshop/shared";
+import type { CreativePlan, InspirationTemplateRecommendation, Product, ScriptStyle } from "@clipshop/shared";
+import { InspirationTemplateRecommendationPanel } from "../components/InspirationTemplateRecommendationPanel";
 import { PlanGenerationProgress } from "../components/PlanGenerationProgress";
 import { StyleTemplateSelector } from "../components/StyleTemplateSelector";
 import { api } from "../services/api";
@@ -11,9 +12,14 @@ export function CreativePlanPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const referenceVideoId = searchParams.get("referenceVideoId")?.trim() || undefined;
+  const queryTemplateId = searchParams.get("templateId")?.trim() || undefined;
   const [product, setProduct] = useState<Product>();
   const [plans, setPlans] = useState<CreativePlan[]>([]);
   const [style, setStyle] = useState<ScriptStyle>("pain_point");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>(queryTemplateId);
+  const [recommendations, setRecommendations] = useState<InspirationTemplateRecommendation[]>([]);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationError, setRecommendationError] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string>();
@@ -41,12 +47,41 @@ export function CreativePlanPage() {
     };
   }, [productId]);
 
+  useEffect(() => {
+    let alive = true;
+    setRecommendationLoading(true);
+    setRecommendationError(undefined);
+    api
+      .getInspirationTemplateRecommendations(productId)
+      .then((items) => {
+        if (!alive) return;
+        setRecommendations(items);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setRecommendationError(err instanceof Error ? err.message : "加载模板推荐失败");
+      })
+      .finally(() => {
+        if (alive) setRecommendationLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [productId]);
+
   const handleGenerate = async ({ merchantAdCopy }: { merchantAdCopy: string }) => {
     if (!product) return;
     setGenerating(true);
     setError(undefined);
     try {
-      const plan = await api.generateCreativePlan(product.id, { style, merchantAdCopy, maxDuration: 15, referenceVideoId });
+      const plan = await api.generateCreativePlan(product.id, {
+        style,
+        merchantAdCopy,
+        maxDuration: 15,
+        referenceVideoId,
+        templateId: selectedTemplateId
+      });
       message.success("CreativePlan 已生成");
       setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)]);
       navigate(`/creative-plans/${plan.id}/review`);
@@ -83,6 +118,21 @@ export function CreativePlanPage() {
           description={`生成时将注入 referenceVideoId=${referenceVideoId} 的结构化拆解结果。`}
         />
       ) : null}
+      {selectedTemplateId ? (
+        <Alert
+          type="info"
+          showIcon
+          message="已选择灵感模板"
+          description={`生成时将注入 templateId=${selectedTemplateId} 的模板策略、Hook、风格和分镜结构。`}
+        />
+      ) : null}
+      <InspirationTemplateRecommendationPanel
+        recommendations={recommendations}
+        selectedTemplateId={selectedTemplateId}
+        loading={recommendationLoading}
+        error={recommendationError}
+        onSelect={setSelectedTemplateId}
+      />
       {generating ? <PlanGenerationProgress active={generating} /> : null}
       <Table
         className="surface"

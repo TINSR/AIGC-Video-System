@@ -1,4 +1,4 @@
-import { Alert, Spin } from "antd";
+import { Alert, List, Space, Spin, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { CreativePlan, Material, Product } from "@clipshop/shared";
@@ -48,12 +48,42 @@ export function ReviewPage() {
   if (error) return <Alert type="error" showIcon message={error} />;
   if (!plan) return <Alert type="warning" showIcon message="未找到 CreativePlan" />;
 
+  const templateTrace = plan.agentTrace?.filter((trace) => trace.agent === "TemplateInspiration") ?? [];
+
   return (
-    <CreativePlanReviewPanel
-      plan={plan}
-      productName={product?.title ?? plan.productId}
-      materials={materials}
-      onRender={(taskId) => navigate(`/tasks/${taskId}`)}
-    />
+    <Space direction="vertical" size={20} className="full-width">
+      {plan.templateId ? (
+        <div className="surface">
+          <Space direction="vertical" size={12} className="full-width">
+            <Space wrap>
+              <Tag color="purple">templateId</Tag>
+              <Typography.Text>{plan.templateId}</Typography.Text>
+            </Space>
+            {templateTrace.length > 0 ? (
+              <List
+                size="small"
+                dataSource={templateTrace}
+                renderItem={(trace) => (
+                  <List.Item>
+                    <Space direction="vertical" size={2}>
+                      <Typography.Text strong>TemplateInspiration</Typography.Text>
+                      <Typography.Text>{trace.summary}</Typography.Text>
+                    </Space>
+                  </List.Item>
+                )}
+              />
+            ) : (
+              <Alert type="info" showIcon message="当前方案记录了 templateId，等待后端 agentTrace 返回 TemplateInspiration。" />
+            )}
+          </Space>
+        </div>
+      ) : null}
+      <CreativePlanReviewPanel
+        plan={plan}
+        productName={product?.title ?? plan.productId}
+        materials={materials}
+        onRender={(taskId) => navigate(`/tasks/${taskId}`)}
+      />
+    </Space>
   );
 }
