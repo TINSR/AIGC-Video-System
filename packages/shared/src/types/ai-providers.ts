@@ -6,6 +6,7 @@ import type {
   VisualBible,
   ReferenceVideoAnalysis,
   InspirationTemplateGenerationContext,
+  SmartEditDecision,
 } from './index';
 
 // CreativePlan草稿类型：不含 id/createdAt/status，且分镜使用 SceneDraft
@@ -91,7 +92,18 @@ export type SeedanceTaskStatus = Omit<SeedanceRenderOutput, 'clips'>;
 export interface FFmpegComposeProvider {
   compose(input: FinalComposeInput): Promise<FinalComposeOutput>;
   generateFromPlan(input: GenerateFromPlanInput): Promise<FinalComposeOutput>;
+  generateFromSmartEdit(input: GenerateFromSmartEditInput): Promise<FinalComposeOutput>;
   checkFFmpegAvailability(): Promise<{ available: boolean; version?: string; error?: string }>;
+}
+
+export interface GenerateFromSmartEditInput {
+  plan: CreativePlan;
+  decisions: SmartEditDecision[];
+  sceneDurations: Record<string, number>;
+  outputPath: string;
+  withSubtitle?: boolean;
+  bgmUrl?: string;
+  voiceoverUrl?: string;
 }
 
 export interface FinalComposeInput {

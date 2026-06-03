@@ -7,9 +7,10 @@ import type {
   FFmpegComposeProvider as IFFmpegComposeProvider,
   FinalComposeInput,
   FinalComposeOutput,
-  GenerateFromPlanInput
+  GenerateFromPlanInput,
+  GenerateFromSmartEditInput,
 } from '@shared/types/ai-providers';
-import type { Material } from '@shared/types';
+import type { Material, Scene } from '@shared/types';
 
 const execAsync = promisify(exec);
 
@@ -328,6 +329,226 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
       resolution: '1080p',
       aspectRatio: '9:16',
     });
+  }
+
+  async generateFromSmartEdit(input: GenerateFromSmartEditInput): Promise<FinalComposeOutput> {
+    const { plan, decisions, sceneDurations, outputPath, withSubtitle = true, bgmUrl, voiceoverUrl } =
+      input;
+
+    if (!plan.scenes || plan.scenes.length === 0) {
+      return {
+        success: false,
+        videoUrl: '',
+        duration: 0,
+        resolution: '1080p',
+        fileSize: 0,
+        errorMessage: '创意方案无分镜，无法合成视频',
+      };
+    }
+
+    const sceneById = new Map(plan.scenes.map((scene: Scene) => [scene.id, scene]));
+    const orderedDecisions = [...decisions].sort((a, b) => a.sceneOrder - b.sceneOrder);
+    type SmartClipInput = {
+      url: string;
+      duration: number;
+      subtitle?: string;
+      startTime?: number;
+      transition?: Scene['transition'];
+    };
+    const clips: SmartClipInput[] = [];
+    for (const decision of orderedDecisions) {
+      const scene = sceneById.get(decision.sceneId);
+      if (!scene || !decision.clip) {
+        continue;
+      }
+      clips.push({
+        url: decision.clip.fileUrl,
+        duration: sceneDurations[scene.id] ?? scene.duration,
+        subtitle: withSubtitle ? scene.subtitle : undefined,
+        startTime: decision.clip.startTime,
+        transition: scene.transition,
+      });
+    }
+
+    if (clips.length === 0) {
+      return {
+        success: false,
+        videoUrl: '',
+        duration: 0,
+        resolution: '1080p',
+        fileSize: 0,
+        errorMessage: '智能剪辑计划没有可用片段',
+      };
+    }
+
+    return this.composeSmartClips({
+      clips,
+      outputPath,
+      bgmUrl,
+      voiceoverUrl,
+    });
+  }
+
+  private async composeSmartClips(input: {
+    clips: Array<{
+      url: string;
+      duration: number;
+      subtitle?: string;
+      startTime?: number;
+      transition?: Scene['transition'];
+    }>;
+    outputPath: string;
+    bgmUrl?: string;
+    voiceoverUrl?: string;
+  }): Promise<FinalComposeOutput> {
+    try {
+      const ffmpegCheck = await this.checkFFmpegAvailability();
+      if (!ffmpegCheck.available) {
+        return {
+          success: false,
+          videoUrl: '',
+          duration: 0,
+          resolution: '1080p',
+          fileSize: 0,
+          errorMessage: ffmpegCheck.error,
+        };
+      }
+
+      const { clips, outputPath, bgmUrl, voiceoverUrl } = input;
+      const outputDir = path.dirname(outputPath);
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+
+      const clipFiles: string[] = [];
+      for (let i = 0; i < clips.length; i++) {
+        const clip = clips[i];
+        const tempOutput = path.join(this.tempDir, `smart_clip_${i}_${randomUUID()}.mp4`);
+        const generated = await this.renderSmartClipSegment(clip, tempOutput);
+        if (!generated) {
+          await this.generateSolidColorClip(clip.duration, clip.subtitle, tempOutput);
+        }
+        if (clip.subtitle && generated) {
+          const subtitleFile = path.join(this.tempDir, `smart_sub_${i}.srt`);
+          this.createSubtitleFile(clip.subtitle, clip.duration, subtitleFile);
+          const subtitledOutput = path.join(this.tempDir, `smart_clip_sub_${i}_${randomUUID()}.mp4`);
+          const subtitleFilterPath = this.escapeSubtitleFilterPath(subtitleFile);
+          await execAsync(
+            `${this.quotedFFmpegPath} -i "${tempOutput}" -vf "subtitles='${subtitleFilterPath}'" -c:a copy "${subtitledOutput}" -y`
+          );
+          fs.unlinkSync(tempOutput);
+          clipFiles.push(subtitledOutput);
+          if (fs.existsSync(subtitleFile)) {
+            fs.unlinkSync(subtitleFile);
+          }
+        } else {
+          clipFiles.push(tempOutput);
+        }
+      }
+
+      const concatFile = path.join(this.tempDir, `smart_concat_${randomUUID()}.txt`);
+      fs.writeFileSync(concatFile, clipFiles.map((file) => `file '${file.replace(/'/g, "'\\''")}'`).join('\n'));
+
+      const concatenatedOutput = path.join(this.tempDir, `smart_concatenated_${randomUUID()}.mp4`);
+      await execAsync(
+        `${this.quotedFFmpegPath} -f concat -safe 0 -i "${concatFile}" -c copy "${concatenatedOutput}" -y`
+      );
+
+      let finalOutput = outputPath;
+      let audioInputs = '';
+      let audioFilters = '';
+      if (bgmUrl) {
+        audioInputs += `-i "${bgmUrl}" `;
+      }
+      if (voiceoverUrl) {
+        audioInputs += `-i "${voiceoverUrl}" `;
+      }
+
+      if (bgmUrl || voiceoverUrl) {
+        if (bgmUrl && voiceoverUrl) {
+          audioFilters =
+            '-filter_complex "[1:a]volume=0.3[a1];[2:a]volume=1.0[a2];[a1][a2]amix=inputs=2:duration=first[a]" -map "[a]"';
+        } else if (bgmUrl) {
+          audioFilters = '-filter_complex "[1:a]volume=0.5[a]" -map "[a]"';
+        } else if (voiceoverUrl) {
+          audioFilters = '-map 1:a';
+        }
+        await execAsync(
+          `${this.quotedFFmpegPath} -i "${concatenatedOutput}" ${audioInputs} -map 0:v ${audioFilters} -c:v copy -c:a aac "${finalOutput}" -y`
+        );
+      } else {
+        if (fs.existsSync(finalOutput)) {
+          fs.unlinkSync(finalOutput);
+        }
+        fs.renameSync(concatenatedOutput, finalOutput);
+      }
+
+      clipFiles.forEach((file) => {
+        if (fs.existsSync(file)) {
+          fs.unlinkSync(file);
+        }
+      });
+      if (fs.existsSync(concatFile)) {
+        fs.unlinkSync(concatFile);
+      }
+      if (fs.existsSync(concatenatedOutput) && concatenatedOutput !== finalOutput) {
+        fs.unlinkSync(concatenatedOutput);
+      }
+
+      const duration = await this.getVideoDuration(finalOutput, clips);
+      const stats = fs.statSync(finalOutput);
+      return {
+        success: true,
+        videoUrl: finalOutput,
+        duration,
+        resolution: '1080p',
+        fileSize: stats.size,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        videoUrl: '',
+        duration: 0,
+        resolution: '1080p',
+        fileSize: 0,
+        errorMessage: `智能剪辑 FFmpeg 合成失败：${error instanceof Error ? error.message : '未知错误'}`,
+      };
+    }
+  }
+
+  private async renderSmartClipSegment(
+    clip: {
+      url: string;
+      duration: number;
+      startTime?: number;
+    },
+    outputPath: string
+  ): Promise<boolean> {
+    const resolvedPath = this.resolveLocalMediaPath(clip.url);
+    if (!resolvedPath || !fs.existsSync(resolvedPath)) {
+      return false;
+    }
+
+    const duration = clip.duration;
+    const scaleFilter =
+      'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=25';
+
+    try {
+      if (/\.(jpg|jpeg|png|webp)$/i.test(resolvedPath)) {
+        await execAsync(
+          `${this.quotedFFmpegPath} -loop 1 -i "${resolvedPath}" -t ${duration} -filter_complex "[0:v]zoompan=z='min(zoom+0.001,1.2)':d=${Math.max(Math.round(duration * 25), 1)}:s=1080x1920,fps=25[v]" -map "[v]" -c:v libx264 -pix_fmt yuv420p "${outputPath}" -y`
+        );
+        return true;
+      }
+
+      const ss = clip.startTime && clip.startTime > 0 ? `-ss ${clip.startTime}` : '';
+      await execAsync(
+        `${this.quotedFFmpegPath} ${ss} -i "${resolvedPath}" -t ${duration} -vf "${scaleFilter}" -an -c:v libx264 -pix_fmt yuv420p "${outputPath}" -y`
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // 创建字幕文件

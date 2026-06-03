@@ -68,7 +68,15 @@ export class RenderController {
       const materials = storedMaterials.length > 0
         ? storedMaterials
         : creativePlan.productId === 'product_001' ? demoMaterials : [];
-      const task = await this.renderService.createRenderTask(creativePlan, materials);
+      const renderMode = typeof req.body?.renderMode === 'string' ? req.body.renderMode : undefined;
+      const task =
+        renderMode === 'smart_clip_edit'
+          ? await this.renderService.createSmartClipRenderTask(creativePlan, materials, {
+              withSubtitle: req.body?.withSubtitle !== false,
+              withTts: req.body?.withTts === true,
+              withBgm: req.body?.withBgm === true,
+            })
+          : await this.renderService.createRenderTask(creativePlan, materials);
 
       res.json({
         success: true,

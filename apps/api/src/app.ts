@@ -27,8 +27,11 @@ import materialRoutes from './modules/materials/material.routes';
 import analyticsRoutes from './modules/analytics/analytics.routes';
 import referenceVideoRoutes from './modules/reference-videos/referenceVideo.routes';
 import inspirationTemplateRoutes from './modules/inspiration-templates/inspirationTemplate.routes';
+import materialClipRoutes from './modules/material-clips/materialClip.routes';
+import smartEditRoutes from './modules/smart-edit/smartEdit.routes';
 
 app.use('/api/products', productRoutes);
+app.use('/api/products', materialClipRoutes);
 app.use('/api', creativePlanRoutes);
 app.use('/api', renderRoutes);
 app.use('/api', workspaceRoutes);
@@ -36,6 +39,7 @@ app.use('/api', materialRoutes);
 app.use('/api', analyticsRoutes);
 app.use('/api', referenceVideoRoutes);
 app.use('/api', inspirationTemplateRoutes);
+app.use('/api', smartEditRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok', timestamp: new Date().toISOString() } });
