@@ -9,6 +9,16 @@ type Props = {
   onSelect: (templateId?: string) => void;
 };
 
+function getReasonTag(reason: string) {
+  if (/历史|播放|点击|转化|完播|效果|score|评分/i.test(reason)) {
+    return { label: "历史效果", color: "green" };
+  }
+  if (/卖点|命中|标签|selling/i.test(reason)) {
+    return { label: "卖点命中", color: "gold" };
+  }
+  return { label: "类目匹配", color: "blue" };
+}
+
 export function InspirationTemplateRecommendationPanel({
   recommendations,
   selectedTemplateId,
@@ -53,9 +63,15 @@ export function InspirationTemplateRecommendationPanel({
                 <Typography.Text strong>{template.name}</Typography.Text>
                 <Typography.Paragraph ellipsis={{ rows: 2 }}>{template.strategy}</Typography.Paragraph>
                 <Space wrap>
-                  {reasons.map((reason) => (
-                    <Tag key={reason}>{reason}</Tag>
-                  ))}
+                  {reasons.map((reason) => {
+                    const tag = getReasonTag(reason);
+                    return (
+                      <Tag key={reason} color={tag.color}>
+                        {tag.label}：{reason}
+                      </Tag>
+                    );
+                  })}
+                  {reasons.length === 0 ? <Tag color="default">暂无效果数据，使用规则推荐</Tag> : null}
                 </Space>
               </Space>
             </button>

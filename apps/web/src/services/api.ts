@@ -1,5 +1,4 @@
 import type {
-  AnalyticsOverview,
   CreativePlan,
   GenerationTask,
   InspirationTemplate,
@@ -18,7 +17,6 @@ import type {
   WorkspaceTaskItem
 } from "@clipshop/shared";
 import {
-  analyticsOverview,
   creativePlans,
   generationTasks,
   materials,
@@ -64,6 +62,75 @@ export type InspirationTemplateGenerateInput = {
   referenceVideoIds?: string[];
 };
 
+export type CommerceMetricsPlatform = "mock" | "douyin_shop" | "tiktok_shop";
+export type CommerceMetricsSource = "mock_seed" | "csv_import" | "provider_sync";
+
+export type VideoPerformanceMetric = {
+  id: string;
+  videoId: string;
+  taskId?: string;
+  creativePlanId?: string;
+  templateId?: string;
+  platform: CommerceMetricsPlatform;
+  source: CommerceMetricsSource;
+  plays: number;
+  clicks: number;
+  conversions: number;
+  averageWatchRate: number;
+  collectedAt: string;
+  createdAt: string;
+};
+
+export type MetricsImportBatch = {
+  id: string;
+  source: CommerceMetricsSource;
+  fileName?: string;
+  totalRows: number;
+  acceptedRows: number;
+  rejectedRows: number;
+  errors: Array<{
+    row: number;
+    message: string;
+  }>;
+  createdAt: string;
+};
+
+export type TemplatePerformanceSummary = {
+  templateId?: string;
+  templateName: string;
+  sampleCount: number;
+  plays: number;
+  clicks: number;
+  conversions: number;
+  clickRate: number;
+  conversionRate: number;
+  averageWatchRate: number;
+  score: number;
+};
+
+export type TemplatePerformanceComparison = {
+  left: TemplatePerformanceSummary;
+  right: TemplatePerformanceSummary;
+  winnerTemplateId?: string;
+  reasons: string[];
+};
+
+export type AnalyticsOverview = {
+  totalPlays: number;
+  totalClicks: number;
+  totalConversions: number;
+  clickRate: number;
+  conversionRate: number;
+  averageWatchRate: number;
+  dailyTrend: Array<{
+    date: string;
+    plays: number;
+    clicks: number;
+    conversions: number;
+  }>;
+  templatePerformance: TemplatePerformanceSummary[];
+};
+
 export function resolveAssetUrl(path?: string): string | undefined {
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path)) return path;
@@ -95,6 +162,278 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const wait = (ms = 180) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const mockSeedMetrics: VideoPerformanceMetric[] = [
+  {
+    id: "metric_seed_001",
+    videoId: "video_blender_pain_point",
+    taskId: "task_001",
+    creativePlanId: "plan_001",
+    templateId: "tpl_pain_point",
+    platform: "mock",
+    source: "mock_seed",
+    plays: 12800,
+    clicks: 1120,
+    conversions: 96,
+    averageWatchRate: 76,
+    collectedAt: "2026-05-27T08:00:00.000Z",
+    createdAt: "2026-05-27T08:05:00.000Z"
+  },
+  {
+    id: "metric_seed_002",
+    videoId: "video_packing_scenario",
+    taskId: "task_002",
+    creativePlanId: "plan_002",
+    templateId: "tpl_scenario_seed",
+    platform: "mock",
+    source: "mock_seed",
+    plays: 9400,
+    clicks: 670,
+    conversions: 42,
+    averageWatchRate: 82,
+    collectedAt: "2026-05-28T08:00:00.000Z",
+    createdAt: "2026-05-28T08:05:00.000Z"
+  },
+  {
+    id: "metric_seed_003",
+    videoId: "video_blender_review",
+    taskId: "task_001",
+    creativePlanId: "plan_001",
+    templateId: "tpl_review_proof",
+    platform: "douyin_shop",
+    source: "mock_seed",
+    plays: 7600,
+    clicks: 610,
+    conversions: 39,
+    averageWatchRate: 69,
+    collectedAt: "2026-05-29T08:00:00.000Z",
+    createdAt: "2026-05-29T08:05:00.000Z"
+  },
+  {
+    id: "metric_seed_004",
+    videoId: "video_packing_pain_point",
+    taskId: "task_002",
+    creativePlanId: "plan_002",
+    templateId: "tpl_pain_point",
+    platform: "tiktok_shop",
+    source: "mock_seed",
+    plays: 15300,
+    clicks: 1390,
+    conversions: 131,
+    averageWatchRate: 73,
+    collectedAt: "2026-05-30T08:00:00.000Z",
+    createdAt: "2026-05-30T08:05:00.000Z"
+  }
+];
+
+let mockMetrics: VideoPerformanceMetric[] = [...mockSeedMetrics];
+let mockImportBatches: MetricsImportBatch[] = [
+  {
+    id: "batch_mock_seed",
+    source: "mock_seed",
+    fileName: "day14-demo-metrics.csv",
+    totalRows: mockSeedMetrics.length,
+    acceptedRows: mockSeedMetrics.length,
+    rejectedRows: 0,
+    errors: [],
+    createdAt: "2026-05-30T08:06:00.000Z"
+  }
+];
+
+const templateNames: Record<string, string> = {
+  tpl_pain_point: "痛点转化型",
+  tpl_scenario_seed: "场景种草型",
+  tpl_review_proof: "测评证据型"
+};
+
+function percent(numerator: number, denominator: number) {
+  if (denominator <= 0) return 0;
+  return Number(((numerator / denominator) * 100).toFixed(2));
+}
+
+function buildTemplatePerformance(metrics: VideoPerformanceMetric[]): TemplatePerformanceSummary[] {
+  const groups = new Map<string, VideoPerformanceMetric[]>();
+  metrics.forEach((metric) => {
+    const key = metric.templateId || "unassigned";
+    groups.set(key, [...(groups.get(key) ?? []), metric]);
+  });
+
+  return [...groups.entries()]
+    .map(([templateId, items]) => {
+      const plays = items.reduce((sum, item) => sum + item.plays, 0);
+      const clicks = items.reduce((sum, item) => sum + item.clicks, 0);
+      const conversions = items.reduce((sum, item) => sum + item.conversions, 0);
+      const averageWatchRate = Number(
+        (items.reduce((sum, item) => sum + item.averageWatchRate, 0) / Math.max(items.length, 1)).toFixed(2)
+      );
+      const clickRate = percent(clicks, plays);
+      const conversionRate = percent(conversions, clicks);
+      const score = Number((conversionRate * 0.5 + clickRate * 0.3 + averageWatchRate * 0.2).toFixed(2));
+      return {
+        templateId: templateId === "unassigned" ? undefined : templateId,
+        templateName: templateNames[templateId] ?? "未绑定模板",
+        sampleCount: items.length,
+        plays,
+        clicks,
+        conversions,
+        clickRate,
+        conversionRate,
+        averageWatchRate,
+        score
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+function buildAnalyticsOverview(metrics: VideoPerformanceMetric[]): AnalyticsOverview {
+  const totalPlays = metrics.reduce((sum, item) => sum + item.plays, 0);
+  const totalClicks = metrics.reduce((sum, item) => sum + item.clicks, 0);
+  const totalConversions = metrics.reduce((sum, item) => sum + item.conversions, 0);
+  const dailyMap = new Map<string, { date: string; plays: number; clicks: number; conversions: number }>();
+  metrics.forEach((metric) => {
+    const date = metric.collectedAt.slice(0, 10);
+    const current = dailyMap.get(date) ?? { date, plays: 0, clicks: 0, conversions: 0 };
+    current.plays += metric.plays;
+    current.clicks += metric.clicks;
+    current.conversions += metric.conversions;
+    dailyMap.set(date, current);
+  });
+
+  return {
+    totalPlays,
+    totalClicks,
+    totalConversions,
+    clickRate: percent(totalClicks, totalPlays),
+    conversionRate: percent(totalConversions, totalClicks),
+    averageWatchRate: Number(
+      (metrics.reduce((sum, item) => sum + item.averageWatchRate, 0) / Math.max(metrics.length, 1)).toFixed(2)
+    ),
+    dailyTrend: [...dailyMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    templatePerformance: buildTemplatePerformance(metrics)
+  };
+}
+
+function compareTemplateSummaries(
+  left: TemplatePerformanceSummary,
+  right: TemplatePerformanceSummary
+): TemplatePerformanceComparison {
+  const winner = left.score >= right.score ? left : right;
+  const conversionDiff = Math.abs(left.conversionRate - right.conversionRate).toFixed(2);
+  const watchWinner = left.averageWatchRate >= right.averageWatchRate ? left : right;
+  return {
+    left,
+    right,
+    winnerTemplateId: winner.templateId,
+    reasons: [
+      `“${winner.templateName}”综合评分更高，当前为 ${winner.score} 分。`,
+      `两者转化率相差 ${conversionDiff} 个百分点。`,
+      `“${watchWinner.templateName}”平均完播率更高。`
+    ]
+  };
+}
+
+function parseCsvLine(line: string) {
+  return line.split(",").map((value) => value.trim());
+}
+
+async function parseMetricsCsv(file: File): Promise<{ metrics: VideoPerformanceMetric[]; batch: MetricsImportBatch }> {
+  const text = await file.text();
+  const rows = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const [headerLine, ...dataRows] = rows;
+  const expected = [
+    "videoId",
+    "taskId",
+    "creativePlanId",
+    "templateId",
+    "platform",
+    "plays",
+    "clicks",
+    "conversions",
+    "averageWatchRate",
+    "collectedAt"
+  ];
+  const headers = parseCsvLine(headerLine ?? "");
+  const errors: MetricsImportBatch["errors"] = [];
+  const accepted: VideoPerformanceMetric[] = [];
+
+  if (expected.some((item, index) => headers[index] !== item)) {
+    return {
+      metrics: [],
+      batch: {
+        id: `batch_${Date.now()}`,
+        source: "csv_import",
+        fileName: file.name,
+        totalRows: dataRows.length,
+        acceptedRows: 0,
+        rejectedRows: dataRows.length,
+        errors: [{ row: 1, message: `CSV 表头必须为：${expected.join(",")}` }],
+        createdAt: new Date().toISOString()
+      }
+    };
+  }
+
+  dataRows.slice(0, 500).forEach((line, index) => {
+    const rowNumber = index + 2;
+    const [videoId, taskId, creativePlanId, templateId, platform, playsRaw, clicksRaw, conversionsRaw, watchRaw, collectedAt] =
+      parseCsvLine(line);
+    const plays = Number(playsRaw);
+    const clicks = Number(clicksRaw);
+    const conversions = Number(conversionsRaw);
+    const averageWatchRate = Number(watchRaw);
+    const rowErrors: string[] = [];
+
+    if (!videoId) rowErrors.push("videoId 不能为空");
+    if (!["mock", "douyin_shop", "tiktok_shop"].includes(platform)) rowErrors.push("platform 不合法");
+    if (!Number.isFinite(plays) || plays < 0) rowErrors.push("plays 必须大于等于 0");
+    if (!Number.isFinite(clicks) || clicks < 0) rowErrors.push("clicks 必须大于等于 0");
+    if (!Number.isFinite(conversions) || conversions < 0) rowErrors.push("conversions 必须大于等于 0");
+    if (clicks > plays) rowErrors.push("clicks 不能大于 plays");
+    if (conversions > clicks) rowErrors.push("conversions 不能大于 clicks");
+    if (!Number.isFinite(averageWatchRate) || averageWatchRate < 0 || averageWatchRate > 100) {
+      rowErrors.push("averageWatchRate 必须在 0-100");
+    }
+    if (!Number.isFinite(Date.parse(collectedAt))) rowErrors.push("collectedAt 必须是可解析日期");
+
+    if (rowErrors.length > 0) {
+      errors.push({ row: rowNumber, message: rowErrors.join("；") });
+      return;
+    }
+
+    accepted.push({
+      id: `metric_csv_${Date.now()}_${index}`,
+      videoId,
+      taskId: taskId || undefined,
+      creativePlanId: creativePlanId || undefined,
+      templateId: templateId || undefined,
+      platform: platform as CommerceMetricsPlatform,
+      source: "csv_import",
+      plays,
+      clicks,
+      conversions,
+      averageWatchRate,
+      collectedAt: new Date(collectedAt).toISOString(),
+      createdAt: new Date().toISOString()
+    });
+  });
+
+  if (dataRows.length > 500) {
+    errors.push({ row: 501, message: "单次 CSV 最多导入 500 行，超出部分已拒绝" });
+  }
+
+  return {
+    metrics: accepted,
+    batch: {
+      id: `batch_${Date.now()}`,
+      source: "csv_import",
+      fileName: file.name,
+      totalRows: dataRows.length,
+      acceptedRows: accepted.length,
+      rejectedRows: dataRows.length - accepted.length,
+      errors,
+      createdAt: new Date().toISOString()
+    }
+  };
+}
 
 function referenceVideoApiUnavailable(): never {
   throw new Error("参考视频库需要真实后端 API。请设置 VITE_USE_MOCK=false 后连接 Day12 ReferenceVideo 服务。");
@@ -463,6 +802,96 @@ export const api = {
   async getAnalytics(): Promise<AnalyticsOverview> {
     if (!USE_MOCK) return request<AnalyticsOverview>("/analytics/overview");
     await wait();
-    return analyticsOverview;
+    return buildAnalyticsOverview(mockMetrics);
+  },
+  async seedMockMetrics(): Promise<VideoPerformanceMetric[]> {
+    if (!USE_MOCK) {
+      return request<VideoPerformanceMetric[]>("/analytics/metrics/mock-seed", { method: "POST" });
+    }
+    await wait();
+    mockMetrics = [...mockSeedMetrics];
+    mockImportBatches = [
+      {
+        id: `batch_mock_seed_${Date.now()}`,
+        source: "mock_seed",
+        fileName: "day14-demo-metrics.csv",
+        totalRows: mockSeedMetrics.length,
+        acceptedRows: mockSeedMetrics.length,
+        rejectedRows: 0,
+        errors: [],
+        createdAt: new Date().toISOString()
+      },
+      ...mockImportBatches.filter((batch) => batch.source !== "mock_seed")
+    ];
+    return mockMetrics;
+  },
+  async resetMockMetrics(): Promise<void> {
+    if (!USE_MOCK) {
+      await request<void>("/analytics/metrics/mock-reset", { method: "POST" });
+      return;
+    }
+    await wait();
+    mockMetrics = mockMetrics.filter((metric) => metric.source !== "mock_seed");
+    mockImportBatches = mockImportBatches.filter((batch) => batch.source !== "mock_seed");
+  },
+  async importMetricsCsv(file: File): Promise<VideoPerformanceMetric[]> {
+    if (!USE_MOCK) {
+      const formData = new FormData();
+      formData.append("file", file);
+      return request<VideoPerformanceMetric[]>("/analytics/metrics/import-csv", {
+        method: "POST",
+        body: formData
+      });
+    }
+    await wait(300);
+    const result = await parseMetricsCsv(file);
+    mockMetrics = [...result.metrics, ...mockMetrics];
+    mockImportBatches = [result.batch, ...mockImportBatches];
+    return result.metrics;
+  },
+  async getMetrics(query?: {
+    platform?: CommerceMetricsPlatform;
+    days?: 7 | 30;
+  }): Promise<VideoPerformanceMetric[]> {
+    if (!USE_MOCK) {
+      const params = new URLSearchParams();
+      if (query?.platform) params.set("platform", query.platform);
+      if (query?.days) params.set("days", String(query.days));
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      return request<VideoPerformanceMetric[]>(`/analytics/metrics${suffix}`);
+    }
+    await wait();
+    const now = Date.now();
+    const days = query?.days ?? 7;
+    return mockMetrics.filter((metric) => {
+      const platformMatched = query?.platform ? metric.platform === query.platform : true;
+      const withinRange = now - Date.parse(metric.collectedAt) <= days * 24 * 60 * 60 * 1000 || days === 30;
+      return platformMatched && withinRange;
+    });
+  },
+  async getMetricsImportBatches(): Promise<MetricsImportBatch[]> {
+    if (!USE_MOCK) return request<MetricsImportBatch[]>("/analytics/metrics/import-batches");
+    await wait();
+    return mockImportBatches;
+  },
+  async getTemplatePerformance(): Promise<TemplatePerformanceSummary[]> {
+    if (!USE_MOCK) return request<TemplatePerformanceSummary[]>("/analytics/template-performance");
+    await wait();
+    return buildTemplatePerformance(mockMetrics);
+  },
+  async compareTemplatePerformance(
+    leftTemplateId: string,
+    rightTemplateId: string
+  ): Promise<TemplatePerformanceComparison> {
+    if (!USE_MOCK) {
+      const params = new URLSearchParams({ leftTemplateId, rightTemplateId });
+      return request<TemplatePerformanceComparison>(`/analytics/template-performance/compare?${params.toString()}`);
+    }
+    await wait();
+    const summaries = buildTemplatePerformance(mockMetrics);
+    const left = summaries.find((item) => item.templateId === leftTemplateId);
+    const right = summaries.find((item) => item.templateId === rightTemplateId);
+    if (!left || !right) throw new Error("请选择两条已有指标的模板进行对比");
+    return compareTemplateSummaries(left, right);
   }
 };
