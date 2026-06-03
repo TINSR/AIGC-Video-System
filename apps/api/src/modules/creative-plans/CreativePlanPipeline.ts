@@ -1,5 +1,5 @@
 import type { CreativePlanInput, CreativePlanDraft, SceneDraft } from '@shared/types/ai-providers';
-import type { Product, Material, VisualBible, ScriptStyle, AgentTrace, SceneGoal, CreativeStrategy, MaterialUsage, ReferenceVideoAnalysis } from '@shared/types';
+import type { Product, Material, VisualBible, ScriptStyle, AgentTrace, SceneGoal, CreativeStrategy, MaterialUsage, ReferenceVideoAnalysis, InspirationTemplateGenerationContext } from '@shared/types';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
 import { RealLLMProvider } from '../../providers/ai/RealLLMProvider';
 
@@ -14,6 +14,8 @@ interface PipelineContext {
   trace: AgentTrace[];
   referenceVideoId?: string;
   referenceVideoAnalysis?: ReferenceVideoAnalysis;
+  inspirationTemplate?: InspirationTemplateGenerationContext;
+  merchantAdCopy?: string;
 }
 
 // ─── Agent Output Types ──────────────────────────────────────────
@@ -105,6 +107,26 @@ export class CreativePlanPipeline {
       referenceVideoId: input.referenceVideoId,
       referenceVideoAnalysis: input.referenceVideoAnalysis,
     };
+
+    // Merchant ad copy injection
+    if (input.merchantAdCopy && input.merchantAdCopy.trim().length > 0) {
+      ctx.merchantAdCopy = input.merchantAdCopy.trim();
+    }
+
+    // Template inspiration — priority: template > referenceVideo > default
+    if (input.inspirationTemplate) {
+      ctx.inspirationTemplate = input.inspirationTemplate;
+      const tpl = input.inspirationTemplate;
+      ctx.trace.push({
+        agent: 'TemplateInspiration',
+        status: 'success',
+        summary: `使用模板"${tpl.name}"，策略：${tpl.strategy}，Hook：${tpl.hookType}，因子：${tpl.factors.slice(0, 4).join('、')}`,
+        warnings: tpl.constraints.slice(0, 2),
+      });
+      if (tpl.style) {
+        ctx.style = tpl.style;
+      }
+    }
 
     if (input.referenceVideoAnalysis && input.referenceVideoId) {
       ctx.trace.push({
@@ -240,30 +262,44 @@ export class CreativePlanPipeline {
 
   private creativeStrategyAgent(ctx: PipelineContext, analysis: ProductAnalysis): PipelineStrategy {
     const start = now();
+    const tpl = ctx.inspirationTemplate;
     const ref = ctx.referenceVideoAnalysis;
-    const sellingPointOrder = ref?.sellingPoints.length
-      ? [...ref.sellingPoints, ...analysis.sellingPoints].slice(0, analysis.sellingPoints.length)
-      : analysis.sellingPoints;
-    const emotionalArc = ref?.scenes.length
-      ? ref.scenes.map((scene) => scene.goal).join(' -> ')
-      : '痛点引入 -> 解决方案 -> 效果展示 -> 促单转化';
-    const sceneCount = ref?.scenes.length
-      ? Math.min(4, Math.max(1, ref.scenes.length))
-      : Math.min(4, Math.max(1, analysis.sellingPoints.length + 1));
+
+    // Priority: template > referenceVideo > default
+    const sellingPointOrder = tpl && tpl.factors.length > 0
+      ? [...tpl.factors.slice(0, analysis.sellingPoints.length), ...analysis.sellingPoints].slice(0, analysis.sellingPoints.length)
+      : ref?.sellingPoints.length
+        ? [...ref.sellingPoints, ...analysis.sellingPoints].slice(0, analysis.sellingPoints.length)
+        : analysis.sellingPoints;
+
+    const goalSequence = tpl && tpl.sceneGoals.length > 0
+      ? tpl.sceneGoals
+      : ref?.scenes.length
+        ? ref.scenes.map((scene) => scene.goal)
+        : ['痛点引入', '解决方案', '效果展示', '促单转化'];
+
+    const emotionalArc = goalSequence.join(' -> ');
+
+    const sceneCount = tpl && tpl.sceneGoals.length > 0
+      ? Math.min(4, Math.max(2, tpl.sceneGoals.length))
+      : ref?.scenes.length
+        ? Math.min(4, Math.max(1, ref.scenes.length))
+        : Math.min(4, Math.max(1, analysis.sellingPoints.length + 1));
 
     const strategy: PipelineStrategy = {
       videoGoal: `展示${ctx.product.title}的核心卖点，引导${analysis.targetUsers}购买`,
       targetAudience: analysis.targetUsers,
       sellingPointOrder,
       emotionalArc,
-      styleDirection: ref?.style || ctx.style as string,
+      styleDirection: tpl?.style || ref?.style || ctx.style as string,
       sceneCount,
     };
 
+    const source = tpl ? `模板"${tpl.name}"` : ref ? `参考视频 ${ref.hookType}` : '默认规则';
     ctx.trace.push({
       agent: 'CreativeStrategyAgent',
       status: 'success',
-      summary: `策略：${strategy.emotionalArc}，推荐 ${strategy.sceneCount} 个分镜，卖点顺序：${strategy.sellingPointOrder.join(' > ')}`,
+      summary: `策略（${source}）：${emotionalArc}，${sceneCount} 个分镜，卖点顺序：${sellingPointOrder.join(' > ')}`,
       durationMs: now() - start,
     });
 
@@ -274,27 +310,36 @@ export class CreativePlanPipeline {
 
   private visualBibleAgent(ctx: PipelineContext, analysis: ProductAnalysis): VisualBible {
     const start = now();
+    const tpl = ctx.inspirationTemplate;
+
+    const baseRules = [
+      '每个分镜保持同一商品外观',
+      '整体色调保持一致',
+      '商品始终清晰可见',
+      '禁止改变商品颜色、形状、材质',
+    ];
+    const templateRules = tpl ? tpl.constraints.filter((c) => !baseRules.includes(c)) : [];
+    const continuityRules = [...baseRules, ...templateRules];
+
+    const style = tpl?.style || 'TikTok 快节奏电商广告';
 
     const visualBible: VisualBible = {
       aspectRatio: '9:16',
-      style: 'TikTok 快节奏电商广告',
+      style,
       colorTone: '明亮清爽',
       lighting: '柔和日光',
       cameraStyle: '手持近景 + 商品特写',
       productAppearance: ctx.product.title,
       mainScenes: [analysis.painPoints, '居家使用', '户外场景'],
-      continuityRules: [
-        '每个分镜保持同一商品外观',
-        '整体色调保持一致',
-        '商品始终清晰可见',
-        '禁止改变商品颜色、形状、材质',
-      ],
+      continuityRules,
     };
 
     ctx.trace.push({
       agent: 'VisualBibleAgent',
       status: 'success',
-      summary: `视觉风格已锁定：${visualBible.style}，色调：${visualBible.colorTone}，镜头：${visualBible.cameraStyle}`,
+      summary: tpl
+        ? `视觉风格已锁定：${visualBible.style}（模板"${tpl.name}"），约束 ${continuityRules.length} 条`
+        : `视觉风格已锁定：${visualBible.style}，色调：${visualBible.colorTone}，镜头：${visualBible.cameraStyle}`,
       durationMs: now() - start,
     });
 
@@ -306,30 +351,52 @@ export class CreativePlanPipeline {
   private scriptAgent(ctx: PipelineContext, analysis: ProductAnalysis, strategy: PipelineStrategy): ScriptOutput {
     const start = now();
     const { product } = ctx;
+    const tpl = ctx.inspirationTemplate;
+    const ref = ctx.referenceVideoAnalysis;
 
-    const hook = ctx.referenceVideoAnalysis
-      ? `参考灵感（${ctx.referenceVideoAnalysis.hookType}）：${ctx.referenceVideoAnalysis.summary.slice(0, 60)}`
-      : `你是不是还在为${analysis.painPoints}烦恼？`;
-    const title = `${product.title} - ${analysis.sellingPoints[0] || ctx.referenceVideoAnalysis?.sellingPoints[0] || '品质之选'}`;
-    const adCopy = ctx.referenceVideoAnalysis
-      ? `这款${product.title}，借鉴参考视频结构：${ctx.referenceVideoAnalysis.sellingPoints.join('，')}。${analysis.sellingPoints.join('，')}，专为${analysis.targetUsers}设计。`
-      : `这款${product.title}，${analysis.sellingPoints.join('，')}，专为${analysis.targetUsers}设计，让你的生活更便捷！`;
-    const cta = ctx.referenceVideoAnalysis?.ctaType === 'shop_now'
+    // Hook: priority template > referenceVideo > default
+    const hookTemplates: Record<string, string> = {
+      '痛点提问': `你是不是还在为${analysis.painPoints}烦恼？`,
+      '视觉冲击': `看！${product.title}的神奇效果！`,
+      '价格悬念': `没想到${product.title}竟然这么值！`,
+      '效果对比': `用${product.title}前后差距也太大了吧！`,
+    };
+    const hookType = tpl?.hookType || ref?.hookType;
+    const hook = hookType && hookTemplates[hookType]
+      ? hookTemplates[hookType]
+      : ref
+        ? `参考灵感（${ref.hookType}）：${ref.summary.slice(0, 60)}`
+        : `你是不是还在为${analysis.painPoints}烦恼？`;
+
+    const title = `${product.title} - ${analysis.sellingPoints[0] || ref?.sellingPoints[0] || '品质之选'}`;
+
+    // adCopy: priority merchantAdCopy > template-aware > referenceVideo > default
+    const adCopy = ctx.merchantAdCopy
+      ? ctx.merchantAdCopy
+      : ref
+        ? `这款${product.title}，借鉴参考视频结构：${ref.sellingPoints.join('，')}。${analysis.sellingPoints.join('，')}，专为${analysis.targetUsers}设计。`
+        : `这款${product.title}，${analysis.sellingPoints.join('，')}，专为${analysis.targetUsers}设计，让你的生活更便捷！`;
+
+    const cta = ref?.ctaType === 'shop_now'
       ? '现在下单享专属优惠，点击下方小黄车带走吧！'
       : '现在下单享专属优惠，点击下方小黄车带走吧！';
+
+    const voiceoverStyle = tpl?.style || ref?.style || '亲切推荐、节奏紧凑';
 
     const script: ScriptOutput = {
       title,
       hook,
       adCopy,
       cta,
-      voiceoverStyle: '亲切推荐、节奏紧凑',
+      voiceoverStyle,
     };
 
+    const source = tpl ? `模板"${tpl.name}"` : ref ? `参考 ${ref.hookType}` : '默认';
+    const merchantNote = ctx.merchantAdCopy ? '，已注入商家诉求' : '';
     ctx.trace.push({
       agent: 'ScriptAgent',
       status: 'success',
-      summary: `标题"${title}"，hook "${hook}"，CTA "${cta}"`,
+      summary: `标题"${title}"，hook "${hook}"（${source}），CTA "${cta}"${merchantNote}`,
       durationMs: now() - start,
     });
 
@@ -386,12 +453,20 @@ export class CreativePlanPipeline {
       },
     ];
 
+    // Template scene goals take priority
+    const tpl = ctx.inspirationTemplate;
+    const tplGoals = tpl ? tpl.sceneGoals.map((g) => this.mapReferenceGoalToSceneGoal(g)) : [];
+
     const scenes: SceneDraft[] = [];
     for (let i = 0; i < strategy.sceneCount; i++) {
       const tmpl = sceneTemplates[i] || sceneTemplates[sceneTemplates.length - 1];
       const materialId = this.pickMaterialForScene(i, imageMaterials, videoMaterials);
       const materialUsage = this.resolveMaterialUsage(materialId, materials);
       const refScene = ref?.scenes[i];
+
+      // Priority: template sceneGoal > referenceVideo goal > pipeline goal > default
+      const tplGoal = tplGoals[i];
+      const refGoal = refScene?.goal ? this.mapReferenceGoalToSceneGoal(refScene.goal) : undefined;
 
       scenes.push({
         order: i + 1,
@@ -404,16 +479,17 @@ export class CreativePlanPipeline {
         seedancePrompt: '', // will be filled by SeedancePromptAgent
         materialId,
         materialUsage,
-        goal: refScene?.goal ? this.mapReferenceGoalToSceneGoal(refScene.goal) : goals[i] || tmpl.goal,
+        goal: tplGoal || refGoal || goals[i] || tmpl.goal,
         warnings: [],
         transition: tmpl.transition,
       });
     }
 
+    const source = tpl ? `模板"${tpl.name}"` : ref ? `参考视频 ${ref.scenes.length} 段结构` : '默认规则';
     ctx.trace.push({
       agent: 'StoryboardAgent',
       status: 'success',
-      summary: `生成 ${scenes.length} 个分镜，总时长 ${scenes.reduce((s, sc) => s + sc.duration, 0)} 秒，结构为 ${scenes.map(s => s.goal).join('-')}`,
+      summary: `生成 ${scenes.length} 个分镜（${source}），结构为 ${scenes.map(s => s.goal).join('-')}`,
       durationMs: now() - start,
     });
 
@@ -444,6 +520,12 @@ export class CreativePlanPipeline {
 
   private seedancePromptAgent(ctx: PipelineContext, scenes: SceneDraft[], visualBible: VisualBible): void {
     const start = now();
+    const tpl = ctx.inspirationTemplate;
+
+    // Template constraints injected into seedance prompts
+    const templateConstraintLine = tpl && tpl.constraints.length > 0
+      ? `[模板约束: ${tpl.constraints.join('; ')}]`
+      : '';
 
     for (const scene of scenes) {
       const goalLabel = {
@@ -466,6 +548,10 @@ export class CreativePlanPipeline {
         `[连贯规则: ${visualBible.continuityRules.join('; ')}]`,
         '[禁止改变商品颜色、形状、核心卖点]',
       ];
+
+      if (templateConstraintLine) {
+        parts.push(templateConstraintLine);
+      }
 
       // Inject material info if available
       if (scene.materialUsage === 'source_clip') {

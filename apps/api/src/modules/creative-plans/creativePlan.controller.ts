@@ -69,7 +69,7 @@ export class CreativePlanController {
   generate = async (req: Request, res: Response<ApiResponse<CreativePlan>>) => {
     try {
       const { productId } = req.params;
-      const { style, maxDuration, referenceVideoId, templateId } = req.body;
+      const { style, maxDuration, referenceVideoId, templateId, merchantAdCopy } = req.body;
 
       let product = productId === demoProduct.id ? demoProduct : { ...demoProduct, id: productId };
       try {
@@ -129,6 +129,7 @@ export class CreativePlanController {
         referenceVideoAnalysis,
         templateId: typeof templateId === 'string' ? templateId.trim() : undefined,
         inspirationTemplate,
+        merchantAdCopy: typeof merchantAdCopy === 'string' ? merchantAdCopy.trim() : undefined,
       });
 
       res.json({
