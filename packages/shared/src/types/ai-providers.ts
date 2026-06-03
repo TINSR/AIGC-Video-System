@@ -31,6 +31,7 @@ export interface CreativePlanInput {
   referenceVideoAnalysis?: ReferenceVideoAnalysis;
   templateId?: string;
   inspirationTemplate?: InspirationTemplateGenerationContext;
+  merchantAdCopy?: string;
 }
 
 export interface SceneRegenerateInput {

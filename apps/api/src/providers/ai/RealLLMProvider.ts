@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { AiProvider, CreativePlanInput, CreativePlanDraft, SceneRegenerateInput, SceneDraft } from '@shared/types/ai-providers';
-import type { Product, Material, ScriptStyle, VisualBible, SceneGoal, ReferenceVideoAnalysis } from '@shared/types';
+import type { Product, Material, ScriptStyle, VisualBible, SceneGoal, ReferenceVideoAnalysis, InspirationTemplateGenerationContext } from '@shared/types';
 import { MockAiProvider } from './MockAiProvider';
 
 interface LLMConfig {
@@ -64,6 +64,19 @@ function summarizeReferenceInspirationForLlm(analysis: ReferenceVideoAnalysis): 
     `CTA 类型：${analysis.ctaType}`,
     `关键词：${analysis.keywords.join('、')}`,
     `分镜目标：\n${sceneGoals}`,
+  ].join('\n');
+}
+
+function summarizeTemplateForLlm(tpl: InspirationTemplateGenerationContext): string {
+  return [
+    `- 模板名: ${tpl.name}`,
+    `- 策略: ${tpl.strategy}`,
+    `- Hook 类型: ${tpl.hookType}`,
+    `- 风格: ${tpl.style}`,
+    `- 关键因子: ${tpl.factors.join('、') || 'unknown'}`,
+    `- 约束: ${tpl.constraints.join('；')}`,
+    `- 分镜目标顺序: ${tpl.sceneGoals.join(' → ') || 'unknown'}`,
+    '- 注意: 只借鉴结构和方法，不要复制模板中的示例文案',
   ].join('\n');
 }
 
@@ -140,18 +153,26 @@ transition 必须是 cut/fade/zoom 之一。`;
       ? `\n可用素材：${materials.map(m => `${m.type === 'video' ? '视频' : '图片'}: ${m.aiDescription || m.title} [${m.tags.join(',')}]`).join('；')}`
       : '';
 
+    const templateInfo = input.inspirationTemplate
+      ? `\n【创意模板（请参考模板结构和方法生成方案）】\n${summarizeTemplateForLlm(input.inspirationTemplate)}`
+      : '';
+
+    const merchantInfo = input.merchantAdCopy && input.merchantAdCopy.trim().length > 0
+      ? `\n商家广告诉求：${input.merchantAdCopy.trim()}`
+      : '';
+
     const userPrompt = `商品信息：
 - 名称：${product.title}
 - 品类：${product.category}
 - 目标用户：${product.targetAudience}
 - 核心卖点：${product.sellingPoints.join('、')}
 - 使用场景：${product.usageScene}
-${materialInfo}
+${materialInfo}${merchantInfo}
 风格偏好：${style || 'scenario'}
 最大时长：${maxDuration || 15} 秒${input.referenceVideoAnalysis ? `
 
 参考视频结构化灵感（仅作创作参考，不要复制原视频字幕或逐句复刻）：
-${summarizeReferenceInspirationForLlm(input.referenceVideoAnalysis)}` : ''}`;
+${summarizeReferenceInspirationForLlm(input.referenceVideoAnalysis)}` : ''}${templateInfo}`;
     const userContent = this.buildUserContent(userPrompt, materials);
 
     const controller = new AbortController();

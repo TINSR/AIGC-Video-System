@@ -94,10 +94,23 @@ export type InspirationTemplateGenerationContext = Pick<
   'id' | 'name' | 'strategy' | 'hookType' | 'style' | 'factors' | 'constraints' | 'sceneGoals'
 >;
 
+export type TemplateRecommendationEvidenceType =
+  | 'category_match'
+  | 'selling_point_match'
+  | 'usage_scene_match'
+  | 'historical_performance';
+
+export type TemplateRecommendationEvidence = {
+  type: TemplateRecommendationEvidenceType;
+  label: string;
+  detail: string;
+};
+
 export type InspirationTemplateRecommendation = {
   template: InspirationTemplate;
   score: number;
   reasons: string[];
+  evidence?: TemplateRecommendationEvidence[];
 };
 
 export type MaterialRole =
