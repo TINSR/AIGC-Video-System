@@ -1,8 +1,13 @@
 import ReactECharts from "echarts-for-react";
-import type { AnalyticsOverview } from "@clipshop/shared";
+
+type AbTestItem = {
+  name: string;
+  versionA: number;
+  versionB: number;
+};
 
 type Props = {
-  data: AnalyticsOverview["abTests"];
+  data: AbTestItem[];
 };
 
 export function AbTestCompareChart({ data }: Props) {

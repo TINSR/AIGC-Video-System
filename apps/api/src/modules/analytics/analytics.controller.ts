@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import type {
   AnalyticsOverview,
   ApiResponse,
+  CommerceMetricsPlatform,
+  CommerceMetricsSource,
   MetricsImportBatch,
   TemplatePerformanceComparison,
   TemplatePerformanceSummary,
@@ -81,8 +83,10 @@ export class AnalyticsController {
   listMetrics = async (req: Request, res: Response<ApiResponse<VideoPerformanceMetric[]>>) => {
     try {
       const data = await metricsImportService.listMetrics({
-        source: typeof req.query.source === 'string' ? req.query.source : undefined,
+        source: typeof req.query.source === 'string' ? (req.query.source as CommerceMetricsSource) : undefined,
+        platform: typeof req.query.platform === 'string' ? (req.query.platform as CommerceMetricsPlatform) : undefined,
         templateId: typeof req.query.templateId === 'string' ? req.query.templateId : undefined,
+        days: typeof req.query.days === 'string' ? Number(req.query.days) : undefined,
         limit: typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined,
       });
       res.json({ success: true, data });

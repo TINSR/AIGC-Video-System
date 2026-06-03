@@ -834,11 +834,11 @@ export const api = {
     mockMetrics = mockMetrics.filter((metric) => metric.source !== "mock_seed");
     mockImportBatches = mockImportBatches.filter((batch) => batch.source !== "mock_seed");
   },
-  async importMetricsCsv(file: File): Promise<VideoPerformanceMetric[]> {
+  async importMetricsCsv(file: File): Promise<MetricsImportBatch> {
     if (!USE_MOCK) {
       const formData = new FormData();
       formData.append("file", file);
-      return request<VideoPerformanceMetric[]>("/analytics/metrics/import-csv", {
+      return request<MetricsImportBatch>("/analytics/metrics/import-csv", {
         method: "POST",
         body: formData
       });
@@ -847,7 +847,7 @@ export const api = {
     const result = await parseMetricsCsv(file);
     mockMetrics = [...result.metrics, ...mockMetrics];
     mockImportBatches = [result.batch, ...mockImportBatches];
-    return result.metrics;
+    return result.batch;
   },
   async getMetrics(query?: {
     platform?: CommerceMetricsPlatform;

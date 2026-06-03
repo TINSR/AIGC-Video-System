@@ -15,10 +15,37 @@ type MetricAggregate = {
   watchSum: number;
 };
 
+function emptyOverview(): AnalyticsOverview {
+  const rates = computeRates(0, 0, 0, 0);
+  return {
+    totalPlays: 0,
+    totalClicks: 0,
+    totalConversions: 0,
+    clickRate: rates.clickRate,
+    conversionRate: rates.conversionRate,
+    averageWatchRate: rates.averageWatchRate,
+    dailyTrend: [],
+    templatePerformance: [],
+  };
+}
+
 export class AnalyticsService {
   async getOverview(): Promise<AnalyticsOverview> {
-    const metrics = await prisma.videoPerformanceMetric.findMany();
-    const templatePerformance = await this.getTemplatePerformance();
+    let metrics: Array<{
+      plays: number;
+      clicks: number;
+      conversions: number;
+      averageWatchRate: number;
+      collectedAt: Date;
+    }>;
+    let templatePerformance: TemplatePerformanceSummary[];
+
+    try {
+      metrics = await prisma.videoPerformanceMetric.findMany();
+      templatePerformance = await this.getTemplatePerformance();
+    } catch {
+      return emptyOverview();
+    }
 
     const totalPlays = metrics.reduce((sum, item) => sum + item.plays, 0);
     const totalClicks = metrics.reduce((sum, item) => sum + item.clicks, 0);
@@ -43,8 +70,21 @@ export class AnalyticsService {
   }
 
   async getTemplatePerformance(): Promise<TemplatePerformanceSummary[]> {
-    const metrics = await prisma.videoPerformanceMetric.findMany();
-    const templates = await prisma.inspirationTemplate.findMany();
+    let metrics: Array<{
+      templateId: string | null;
+      plays: number;
+      clicks: number;
+      conversions: number;
+      averageWatchRate: number;
+    }>;
+    let templates: Array<{ id: string; name: string }>;
+
+    try {
+      metrics = await prisma.videoPerformanceMetric.findMany();
+      templates = await prisma.inspirationTemplate.findMany();
+    } catch {
+      return [];
+    }
     const templateNameById = new Map(templates.map((item) => [item.id, item.name]));
 
     const groups = new Map<string, MetricAggregate>();

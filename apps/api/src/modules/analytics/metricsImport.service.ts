@@ -3,7 +3,7 @@ import prisma from '../../config/prisma';
 import type { MetricsImportBatch, VideoPerformanceMetric } from '@shared/types';
 import { MockCommerceMetricsProvider } from '../../providers/metrics/MockCommerceMetricsProvider';
 import { CsvCommerceMetricsProvider } from '../../providers/metrics/CsvCommerceMetricsProvider';
-import { MAX_IMPORT_ERRORS, type VideoPerformanceMetricDraft } from './metrics.types';
+import { MAX_IMPORT_ERRORS, type CommerceMetricsQuery, type VideoPerformanceMetricDraft } from './metrics.types';
 
 function mapMetric(record: {
   id: string;
@@ -128,11 +128,15 @@ export class MetricsImportService {
     return mapBatch(batch);
   }
 
-  async listMetrics(query: { source?: string; templateId?: string; limit?: number }): Promise<VideoPerformanceMetric[]> {
+  async listMetrics(query: CommerceMetricsQuery): Promise<VideoPerformanceMetric[]> {
+    const days = Number.isFinite(query.days) && query.days && query.days > 0 ? query.days : undefined;
+    const since = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : undefined;
     const records = await prisma.videoPerformanceMetric.findMany({
       where: {
         ...(query.source ? { source: query.source } : {}),
+        ...(query.platform ? { platform: query.platform } : {}),
         ...(query.templateId ? { templateId: query.templateId } : {}),
+        ...(since ? { collectedAt: { gte: since } } : {}),
       },
       orderBy: { collectedAt: 'desc' },
       take: query.limit ?? 200,

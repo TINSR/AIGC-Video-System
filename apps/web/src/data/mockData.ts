@@ -278,6 +278,8 @@ export const generationTasks: GenerationTask[] = [
 export const analyticsOverview: AnalyticsOverview = {
   totalPlays: 48200,
   totalClicks: 3560,
+  totalConversions: 330,
+  clickRate: 7.39,
   conversionRate: 6.8,
   averageWatchRate: 72,
   dailyTrend: [
@@ -289,9 +291,5 @@ export const analyticsOverview: AnalyticsOverview = {
     { date: "05-20", plays: 9700, clicks: 730, conversions: 71 },
     { date: "05-21", plays: 10700, clicks: 840, conversions: 80 }
   ],
-  abTests: [
-    { name: "Hook：早八痛点 vs 健身场景", versionA: 6.1, versionB: 7.4, winner: "B" },
-    { name: "CTA：点击了解 vs 立即拥有", versionA: 5.8, versionB: 6.6, winner: "B" },
-    { name: "画幅：9:16 vs 16:9", versionA: 7.1, versionB: 4.2, winner: "A" }
-  ]
+  templatePerformance: []
 };

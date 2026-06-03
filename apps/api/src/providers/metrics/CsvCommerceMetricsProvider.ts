@@ -1,4 +1,3 @@
-import { parse } from 'csv-parse/sync';
 import type { CommerceMetricsPlatform } from '@shared/types';
 import type { ICommerceMetricsProvider } from './ICommerceMetricsProvider';
 import {
@@ -22,6 +21,46 @@ function normalizeHeader(value: string): string {
 function emptyToUndefined(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = '';
+  let quoted = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      i += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === ',' && !quoted) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function parseCsvContent(content: string): Record<string, string>[] {
+  const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length === 0) return [];
+
+  const headers = parseCsvLine(lines[0]).map(normalizeHeader);
+  return lines.slice(1).map((line) => {
+    const values = parseCsvLine(line);
+    const row: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] ?? '';
+    });
+    return row;
+  });
 }
 
 function validateRow(
@@ -99,12 +138,7 @@ export class CsvCommerceMetricsProvider implements ICommerceMetricsProvider {
       throw new Error('CSV_EMPTY');
     }
 
-    const records = parse(content, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-      relax_column_count: false,
-    }) as Record<string, string>[];
+    const records = parseCsvContent(content);
 
     if (records.length === 0) {
       throw new Error('CSV_EMPTY');

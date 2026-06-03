@@ -11,7 +11,9 @@ export type MetricsImportRowError = MetricsImportBatch['errors'][number];
 
 export type CommerceMetricsQuery = {
   source?: CommerceMetricsSource;
+  platform?: CommerceMetricsPlatform;
   templateId?: string;
+  days?: number;
   limit?: number;
 };
 
