@@ -17,6 +17,8 @@ function mapError(error: unknown): { status: number; code: string; message: stri
       return { status: 400, code: 'NO_MATERIAL_CLIPS', message: '没有可用素材片段，请先分析素材' };
     case 'NO_MATERIALS':
       return { status: 400, code: 'NO_MATERIALS', message: '商品没有素材' };
+    case 'SMART_EDIT_OVERRIDE_NOT_FOUND':
+      return { status: 400, code: 'SMART_EDIT_OVERRIDE_NOT_FOUND', message: '要替换的分镜或素材片段不存在' };
     default:
       return null;
   }
@@ -26,7 +28,8 @@ export class SmartEditController {
   buildPlan = async (req: Request, res: Response<ApiResponse<SmartEditPlan>>) => {
     try {
       const force = req.body?.force === true;
-      const data = await service.buildPlan(req.params.id, force);
+      const overrides = Array.isArray(req.body?.overrides) ? req.body.overrides : [];
+      const data = await service.buildPlan(req.params.id, force, overrides);
       res.json({ success: true, data });
     } catch (error) {
       const mapped = mapError(error);

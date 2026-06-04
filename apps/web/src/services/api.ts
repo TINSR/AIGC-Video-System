@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   CreativePlan,
   GenerationTask,
   InspirationTemplate,
@@ -373,7 +373,7 @@ function compareTemplateSummaries(
     winnerTemplateId: winner.templateId,
     reasons: [
       `“${winner.templateName}”综合评分更高，当前为 ${winner.score} 分。`,
-      `两者转化率相差 ${conversionDiff} 个百分点。`,
+      `二者转化率相差 ${conversionDiff} 个百分点。`,
       `“${watchWinner.templateName}”平均完播率更高。`
     ]
   };
@@ -620,11 +620,11 @@ async function parseMetricsCsv(file: File): Promise<{ metrics: VideoPerformanceM
 }
 
 function referenceVideoApiUnavailable(): never {
-  throw new Error("参考视频库需要真实后端 API。请设置 VITE_USE_MOCK=false 后连接 Day12 ReferenceVideo 服务。");
+  throw new Error("参考视频库需要真实后端 API，请设置 VITE_USE_MOCK=false 后连接 Day12 ReferenceVideo 服务。");
 }
 
 function inspirationTemplateApiUnavailable(): never {
-  throw new Error("灵感模板库需要真实后端 API。请设置 VITE_USE_MOCK=false 后连接 Day13 InspirationTemplate 服务。");
+  throw new Error("灵感模板库需要真实后端 API，请设置 VITE_USE_MOCK=false 后连接 Day13 InspirationTemplate 服务。");
 }
 
 export const api = {

@@ -30,7 +30,9 @@ export function keywordMatchScore(scene: Scene, clip: MaterialClip): number {
     return 0.2;
   }
 
-  const keywords = [...clip.tags, ...clip.summary.split(/[\s,，、/]+/)].filter((item) => item.length >= 2);
+  const keywords = [...clip.tags, ...clip.summary.split(/[\s,，、。]+/)]
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2);
   const hits = keywords.filter((keyword) => text.includes(keyword.toLowerCase()));
   if (hits.length >= 2) {
     return 1;
@@ -64,6 +66,19 @@ export function durationFitScore(sceneDuration: number, clipDuration: number): n
     return 0.7;
   }
   return 0.4;
+}
+
+export function preferredSceneTypeBonus(scene: Scene, clip: MaterialClip): number {
+  if (scene.goal === 'cta' && (clip.sceneType === 'cta' || clip.sceneType === 'product_closeup' || clip.type === 'image')) {
+    return 5;
+  }
+  if (scene.goal === 'proof' && (clip.sceneType === 'detail' || clip.sceneType === 'product_closeup')) {
+    return 5;
+  }
+  if (scene.goal === 'hook' && (clip.sceneType === 'usage_scene' || clip.sceneType === 'lifestyle')) {
+    return 5;
+  }
+  return 0;
 }
 
 export function computeMatchScore(
@@ -109,6 +124,9 @@ export function buildMatchReasons(
   }
   if (durationFitScore(sceneDuration, clip.duration) >= 0.7) {
     reasons.push('片段时长适合当前分镜');
+  }
+  if (preferredSceneTypeBonus(scene, clip) > 0) {
+    reasons.push(`符合 ${scene.goal ?? '当前'} 分镜的素材偏好`);
   }
   if (reasons.length === 0) {
     reasons.push('基础匹配：素材片段可用于当前分镜');

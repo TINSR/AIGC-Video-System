@@ -433,13 +433,21 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
           this.createSubtitleFile(clip.subtitle, clip.duration, subtitleFile);
           const subtitledOutput = path.join(this.tempDir, `smart_clip_sub_${i}_${randomUUID()}.mp4`);
           const subtitleFilterPath = this.escapeSubtitleFilterPath(subtitleFile);
-          await execAsync(
-            `${this.quotedFFmpegPath} -i "${tempOutput}" -vf "subtitles='${subtitleFilterPath}'" -c:a copy "${subtitledOutput}" -y`
-          );
-          fs.unlinkSync(tempOutput);
-          clipFiles.push(subtitledOutput);
-          if (fs.existsSync(subtitleFile)) {
-            fs.unlinkSync(subtitleFile);
+          try {
+            await execAsync(
+              `${this.quotedFFmpegPath} -i "${tempOutput}" -vf "subtitles='${subtitleFilterPath}'" -c:a copy "${subtitledOutput}" -y`
+            );
+            fs.unlinkSync(tempOutput);
+            clipFiles.push(subtitledOutput);
+          } catch {
+            if (fs.existsSync(subtitledOutput)) {
+              fs.unlinkSync(subtitledOutput);
+            }
+            clipFiles.push(tempOutput);
+          } finally {
+            if (fs.existsSync(subtitleFile)) {
+              fs.unlinkSync(subtitleFile);
+            }
           }
         } else {
           clipFiles.push(tempOutput);
@@ -447,7 +455,12 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
       }
 
       const concatFile = path.join(this.tempDir, `smart_concat_${randomUUID()}.txt`);
-      fs.writeFileSync(concatFile, clipFiles.map((file) => `file '${file.replace(/'/g, "'\\''")}'`).join('\n'));
+      fs.writeFileSync(
+        concatFile,
+        clipFiles
+          .map((file) => `file '${file.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
+          .join('\n')
+      );
 
       const concatenatedOutput = path.join(this.tempDir, `smart_concatenated_${randomUUID()}.mp4`);
       await execAsync(
