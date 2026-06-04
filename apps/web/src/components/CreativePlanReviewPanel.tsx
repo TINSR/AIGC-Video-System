@@ -1,10 +1,12 @@
 import { Alert, Button, Col, Descriptions, Row, Space, Tag, Typography, message } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CreativePlan, Material, Scene } from "@clipshop/shared";
 import { SCENE_PREVIEW_AVAILABLE, api, resolveAssetUrl } from "../services/api";
+import type { MaterialClip, SmartEditPlan } from "../services/api";
 import { ComplianceWarningList } from "./ComplianceWarningList";
 import { SceneTimelinePanel } from "./SceneTimelinePanel";
 import { ScriptResultPanel } from "./ScriptResultPanel";
+import { SmartEditDecisionPanel } from "./SmartEditDecisionPanel";
 import { StrategyReviewPanel } from "./StrategyReviewPanel";
 import { VisualBiblePanel } from "./VisualBiblePanel";
 import { getMaterialRoleLabel, getPrimaryStorageKey, pickPrimaryMaterialId } from "../services/materialMetadata";
@@ -29,6 +31,14 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
   const [renderingPreviewSceneId, setRenderingPreviewSceneId] = useState<string>();
   const [approving, setApproving] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [smartClips, setSmartClips] = useState<MaterialClip[]>([]);
+  const [smartEditPlan, setSmartEditPlan] = useState<SmartEditPlan>();
+  const [smartEditLoading, setSmartEditLoading] = useState(true);
+  const [analyzingSmartClips, setAnalyzingSmartClips] = useState(false);
+  const [matchingSmartEdit, setMatchingSmartEdit] = useState(false);
+  const [renderingSmartEdit, setRenderingSmartEdit] = useState(false);
+  const [replacingSmartEditSceneId, setReplacingSmartEditSceneId] = useState<string>();
+  const [smartEditError, setSmartEditError] = useState<string>();
   const [error, setError] = useState<string>();
 
   const isApproved = currentPlan.status === "approved";
@@ -39,6 +49,37 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
   const primaryMaterial = materials.find((material) => material.id === primaryMaterialId);
   const totalDuration = scenes.reduce((sum, scene) => sum + Number(scene.duration || 0), 0);
   const sellingPointOrder = currentPlan.creativeStrategy?.sellingPointOrder?.join(" -> ") || currentPlan.adCopy;
+
+  useEffect(() => {
+    let alive = true;
+    setSmartEditLoading(true);
+    setSmartEditError(undefined);
+
+    Promise.all([
+      api.getMaterialClips(plan.productId).catch(() => []),
+      api.getSmartEditPlan(plan.id).catch((err) => {
+        const messageText = err instanceof Error ? err.message : "";
+        if (/请先重新匹配|SMART_EDIT_PLAN_NOT_FOUND/i.test(messageText)) return undefined;
+        throw err;
+      })
+    ])
+      .then(([clips, nextSmartEditPlan]) => {
+        if (!alive) return;
+        setSmartClips(clips);
+        setSmartEditPlan(nextSmartEditPlan);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setSmartEditError(err instanceof Error ? err.message : "加载智能剪辑结果失败");
+      })
+      .finally(() => {
+        if (alive) setSmartEditLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [plan.id, plan.productId]);
 
   const normalizeScenes = (nextScenes: Scene[]) =>
     nextScenes.map((scene, index) => ({
@@ -119,6 +160,82 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
       message.error(messageText);
     } finally {
       setRendering(false);
+    }
+  };
+
+  const analyzeSmartClips = async () => {
+    setSmartEditError(undefined);
+    setAnalyzingSmartClips(true);
+    try {
+      const clips = await api.analyzeMaterialClips(currentPlan.productId);
+      setSmartClips(clips);
+      setSmartEditPlan(undefined);
+      message.success(`已分析 ${clips.length} 个素材切片`);
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "分析素材失败";
+      setSmartEditError(messageText);
+      message.error(messageText);
+    } finally {
+      setAnalyzingSmartClips(false);
+    }
+  };
+
+  const rematchSmartEditPlan = async () => {
+    setSmartEditError(undefined);
+    if (smartClips.length === 0) {
+      message.info("请先分析素材");
+      return;
+    }
+    setMatchingSmartEdit(true);
+    try {
+      if (dirty) await saveTimeline(false);
+      const nextPlan = await api.createSmartEditPlan(currentPlan.id);
+      setSmartEditPlan(nextPlan);
+      message.success("已重新匹配分镜素材");
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "重新匹配失败";
+      setSmartEditError(messageText);
+      message.error(messageText);
+    } finally {
+      setMatchingSmartEdit(false);
+    }
+  };
+
+  const renderSmartClipEdit = async () => {
+    setSmartEditError(undefined);
+    setRenderingSmartEdit(true);
+    try {
+      if (dirty) await saveTimeline(false);
+      let nextPlan = smartEditPlan;
+      if (!nextPlan || nextPlan.decisions.length === 0) {
+        nextPlan = await api.createSmartEditPlan(currentPlan.id);
+        setSmartEditPlan(nextPlan);
+      }
+      const task = await api.renderSmartClipEdit(currentPlan.id);
+      message.success("智能剪辑任务已创建");
+      onRender(task.id);
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "智能剪辑成片失败";
+      setSmartEditError(messageText);
+      message.error(messageText);
+    } finally {
+      setRenderingSmartEdit(false);
+    }
+  };
+
+  const replaceSmartEditClip = async (sceneId: string, clipId: string) => {
+    setSmartEditError(undefined);
+    setReplacingSmartEditSceneId(sceneId);
+    try {
+      const nextPlan = await api.replaceSmartEditDecisionClip(currentPlan.id, sceneId, clipId);
+      setSmartEditPlan(nextPlan);
+      message.success("已保存手动替换，并重新生成 SmartEditPlan");
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "手动替换 clip 失败";
+      setSmartEditError(messageText);
+      message.error(messageText);
+    } finally {
+      setReplacingSmartEditSceneId(undefined);
     }
   };
 
@@ -269,6 +386,21 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
       ) : (
         <Alert type="warning" showIcon message="当前方案还没有分镜。" />
       )}
+
+      <SmartEditDecisionPanel
+        clips={smartClips}
+        plan={smartEditPlan}
+        loading={smartEditLoading}
+        analyzing={analyzingSmartClips}
+        matching={matchingSmartEdit}
+        rendering={renderingSmartEdit}
+        replacingSceneId={replacingSmartEditSceneId}
+        error={smartEditError}
+        onAnalyze={analyzeSmartClips}
+        onRematch={rematchSmartEditPlan}
+        onRender={renderSmartClipEdit}
+        onReplaceClip={replaceSmartEditClip}
+      />
     </Space>
   );
 }

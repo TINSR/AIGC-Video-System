@@ -131,6 +131,50 @@ export type AnalyticsOverview = {
   templatePerformance: TemplatePerformanceSummary[];
 };
 
+export type MaterialClipSourceType = "merchant_upload" | "seedance_generated" | "system_asset";
+export type MaterialClipType = "image" | "video_clip";
+export type ClipSceneType = "product_closeup" | "usage_scene" | "detail" | "packaging" | "lifestyle" | "cta";
+export type MotionLevel = "low" | "medium" | "high";
+export type SmartEditSceneGoal = NonNullable<Scene["goal"]>;
+
+export type MaterialClip = {
+  id: string;
+  productId: string;
+  materialId: string;
+  sourceType: MaterialClipSourceType;
+  type: MaterialClipType;
+  fileUrl: string;
+  thumbnailUrl?: string;
+  startTime?: number;
+  endTime?: number;
+  duration: number;
+  summary: string;
+  tags: string[];
+  sceneType: ClipSceneType;
+  visualQuality: number;
+  motionLevel: MotionLevel;
+  suitableGoals: SmartEditSceneGoal[];
+  createdAt: string;
+};
+
+export type SmartEditDecision = {
+  sceneId: string;
+  sceneOrder: number;
+  sceneGoal?: Scene["goal"];
+  sceneSubtitle: string;
+  sceneDuration: number;
+  clip?: MaterialClip;
+  score: number;
+  reasons: string[];
+  fallbackUsed: boolean;
+};
+
+export type SmartEditPlan = {
+  creativePlanId: string;
+  decisions: SmartEditDecision[];
+  totalDuration: number;
+};
+
 export function resolveAssetUrl(path?: string): string | undefined {
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path)) return path;
@@ -240,6 +284,9 @@ let mockImportBatches: MetricsImportBatch[] = [
   }
 ];
 
+let mockMaterialClipsByProduct = new Map<string, MaterialClip[]>();
+let mockSmartEditPlans = new Map<string, SmartEditPlan>();
+
 const templateNames: Record<string, string> = {
   tpl_pain_point: "痛点转化型",
   tpl_scenario_seed: "场景种草型",
@@ -334,6 +381,143 @@ function compareTemplateSummaries(
 
 function parseCsvLine(line: string) {
   return line.split(",").map((value) => value.trim());
+}
+
+function inferClipSceneType(material: Material): ClipSceneType {
+  const text = [material.title, material.tags.join(" "), material.aiDescription].join(" ");
+  if (/主图|主体|商品|close/i.test(text)) return "product_closeup";
+  if (/细节|拉链|面料|防泼|隔层|detail/i.test(text)) return "detail";
+  if (/包装|开箱|pack/i.test(text)) return "packaging";
+  if (/cta|促单|结尾/i.test(text)) return "cta";
+  if (/场景|使用|旅行|办公室|生活|lifestyle/i.test(text)) return "usage_scene";
+  return material.type === "image" ? "product_closeup" : "lifestyle";
+}
+
+function goalsForSceneType(sceneType: ClipSceneType): SmartEditSceneGoal[] {
+  if (sceneType === "product_closeup") return ["feature", "cta"];
+  if (sceneType === "detail") return ["feature", "proof"];
+  if (sceneType === "usage_scene" || sceneType === "lifestyle") return ["hook", "proof"];
+  if (sceneType === "cta") return ["cta"];
+  return ["feature"];
+}
+
+function buildMockMaterialClips(productId: string): MaterialClip[] {
+  const productMaterials = materials.filter((material) => material.productId === productId);
+  const now = new Date().toISOString();
+  return productMaterials.flatMap<MaterialClip>((material) => {
+    const sceneType = inferClipSceneType(material);
+    const baseTags = [...material.tags, sceneType, material.title].filter(Boolean);
+    if (material.type === "image") {
+      return [
+        {
+          id: `clip_${material.id}_image`,
+          productId,
+          materialId: material.id,
+          sourceType: "merchant_upload",
+          type: "image",
+          fileUrl: material.fileUrl,
+          thumbnailUrl: material.thumbnailUrl ?? material.fileUrl,
+          duration: 3,
+          summary: material.aiDescription || `${material.title} 图片素材`,
+          tags: baseTags,
+          sceneType,
+          visualQuality: material.isPrimary ? 0.92 : 0.78,
+          motionLevel: "low",
+          suitableGoals: goalsForSceneType(sceneType),
+          createdAt: now
+        } satisfies MaterialClip
+      ];
+    }
+
+    const duration = Math.max(3, Number(material.duration || 6));
+    return [
+      {
+        id: `clip_${material.id}_video_1`,
+        productId,
+        materialId: material.id,
+        sourceType: "merchant_upload",
+        type: "video_clip",
+        fileUrl: material.fileUrl,
+        thumbnailUrl: material.thumbnailUrl,
+        startTime: 0,
+        endTime: Math.min(duration, 4),
+        duration: Math.min(duration, 4),
+        summary: material.aiDescription || `${material.title} 视频片段`,
+        tags: baseTags,
+        sceneType,
+        visualQuality: 0.82,
+        motionLevel: "medium",
+        suitableGoals: goalsForSceneType(sceneType),
+        createdAt: now
+      } satisfies MaterialClip
+    ];
+  });
+}
+
+function scoreClipForScene(scene: Scene, clip: MaterialClip) {
+  const text = [scene.subtitle, scene.voiceover, scene.visualDescription].join(" ");
+  const matchedTags = clip.tags.filter((tag) => tag && text.includes(tag));
+  const goalMatched = scene.goal ? clip.suitableGoals.includes(scene.goal) : false;
+  const durationDiff = Math.abs(Number(scene.duration || 0) - clip.duration);
+  const productFocused = clip.sceneType === "product_closeup" || clip.type === "image";
+  const score = Math.round(
+    (goalMatched ? 35 : 12) +
+      Math.min(25, matchedTags.length * 12) +
+      (productFocused ? 18 : 10) +
+      clip.visualQuality * 15 +
+      (durationDiff <= 1 ? 5 : durationDiff <= 2 ? 3 : 1)
+  );
+
+  const reasons = [
+    goalMatched ? `命中分镜目标 ${scene.goal}` : "按分镜语义选择相近素材",
+    matchedTags.length > 0 ? `命中关键词：${matchedTags.slice(0, 3).join("、")}` : `素材摘要匹配：${clip.summary}`,
+    productFocused ? "商品主体清晰" : "适合补充使用场景",
+    durationDiff <= 1 ? "片段时长适合当前分镜" : "片段可裁剪适配当前分镜"
+  ];
+
+  return { score, reasons };
+}
+
+function buildMockSmartEditPlan(plan: CreativePlan, clips: MaterialClip[]): SmartEditPlan {
+  const sortedScenes = [...plan.scenes].sort((a, b) => a.order - b.order);
+  const fallbackClip = clips.find((clip) => clip.type === "image") ?? clips[0];
+  const usedClipIds = new Set<string>();
+  const decisions = sortedScenes.map((scene) => {
+    const ranked = clips
+      .map((clip) => ({ clip, ...scoreClipForScene(scene, clip) }))
+      .sort((a, b) => {
+        const repeatPenaltyA = usedClipIds.has(a.clip.id) ? 10 : 0;
+        const repeatPenaltyB = usedClipIds.has(b.clip.id) ? 10 : 0;
+        return b.score - repeatPenaltyB - (a.score - repeatPenaltyA);
+      });
+    const selected = ranked[0]?.clip ?? fallbackClip;
+    const matched = ranked[0] ?? (selected ? { clip: selected, score: 55, reasons: ["素材不足，使用商品图兜底"] } : undefined);
+    if (selected) usedClipIds.add(selected.id);
+    return {
+      sceneId: scene.id,
+      sceneOrder: scene.order,
+      sceneGoal: scene.goal,
+      sceneSubtitle: scene.subtitle,
+      sceneDuration: Number(scene.duration || 0),
+      clip: selected,
+      score: matched?.score ?? 0,
+      reasons: matched?.reasons ?? ["当前没有可用素材片段"],
+      fallbackUsed: !ranked[0] || (matched?.score ?? 0) < 60
+    };
+  });
+
+  return {
+    creativePlanId: plan.id,
+    decisions,
+    totalDuration: decisions.reduce((sum, decision) => sum + decision.sceneDuration, 0)
+  };
+}
+
+function normalizeSmartEditError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/SMART_EDIT_PLAN_NOT_FOUND/i.test(message)) return "请先重新匹配";
+  if (/NO_MATERIAL_CLIPS/i.test(message)) return "请先分析素材";
+  return message;
 }
 
 async function parseMetricsCsv(file: File): Promise<{ metrics: VideoPerformanceMetric[]; batch: MetricsImportBatch }> {
@@ -756,6 +940,153 @@ export const api = {
     const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
     plan.status = "approved";
     return { ...plan, id: planId, status: "approved" };
+  },
+  async analyzeMaterialClips(productId: string): Promise<MaterialClip[]> {
+    if (!USE_MOCK) {
+      try {
+        return await request<MaterialClip[]>(`/products/${productId}/material-clips/analyze`, {
+          method: "POST",
+          body: JSON.stringify({ force: true })
+        });
+      } catch (err) {
+        throw new Error(normalizeSmartEditError(err));
+      }
+    }
+    await wait(500);
+    const clips = buildMockMaterialClips(productId);
+    mockMaterialClipsByProduct.set(productId, clips);
+    return clips;
+  },
+  async getMaterialClips(productId: string): Promise<MaterialClip[]> {
+    if (!USE_MOCK) {
+      try {
+        return await request<MaterialClip[]>(`/products/${productId}/material-clips`);
+      } catch (err) {
+        throw new Error(normalizeSmartEditError(err));
+      }
+    }
+    await wait();
+    return mockMaterialClipsByProduct.get(productId) ?? [];
+  },
+  async createSmartEditPlan(planId: string): Promise<SmartEditPlan> {
+    if (!USE_MOCK) {
+      try {
+        return await request<SmartEditPlan>(`/creative-plans/${planId}/smart-edit/plan`, {
+          method: "POST",
+          body: JSON.stringify({ force: true })
+        });
+      } catch (err) {
+        throw new Error(normalizeSmartEditError(err));
+      }
+    }
+    await wait(500);
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    let clips = mockMaterialClipsByProduct.get(plan.productId) ?? [];
+    if (clips.length === 0) {
+      clips = buildMockMaterialClips(plan.productId);
+      mockMaterialClipsByProduct.set(plan.productId, clips);
+    }
+    const smartEditPlan = buildMockSmartEditPlan(plan, clips);
+    mockSmartEditPlans.set(planId, smartEditPlan);
+    return smartEditPlan;
+  },
+  async getSmartEditPlan(planId: string): Promise<SmartEditPlan> {
+    if (!USE_MOCK) {
+      try {
+        return await request<SmartEditPlan>(`/creative-plans/${planId}/smart-edit/plan`);
+      } catch (err) {
+        throw new Error(normalizeSmartEditError(err));
+      }
+    }
+    await wait();
+    const plan = mockSmartEditPlans.get(planId);
+    if (!plan) throw new Error("请先重新匹配");
+    return plan;
+  },
+  async replaceSmartEditDecisionClip(planId: string, sceneId: string, clipId: string): Promise<SmartEditPlan> {
+    if (!USE_MOCK) {
+      try {
+        return await request<SmartEditPlan>(`/creative-plans/${planId}/smart-edit/plan`, {
+          method: "POST",
+          body: JSON.stringify({
+            force: false,
+            overrides: [{ sceneId, clipId }]
+          })
+        });
+      } catch (err) {
+        throw new Error(normalizeSmartEditError(err));
+      }
+    }
+    await wait(260);
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    const clips = mockMaterialClipsByProduct.get(plan.productId) ?? buildMockMaterialClips(plan.productId);
+    mockMaterialClipsByProduct.set(plan.productId, clips);
+    const clip = clips.find((item) => item.id === clipId);
+    const scene = plan.scenes.find((item) => item.id === sceneId);
+    if (!clip || !scene) throw new Error("未找到要替换的素材片段");
+    const currentPlan = mockSmartEditPlans.get(planId) ?? buildMockSmartEditPlan(plan, clips);
+    const scored = scoreClipForScene(scene, clip);
+    const nextPlan: SmartEditPlan = {
+      ...currentPlan,
+      decisions: currentPlan.decisions.map((decision) =>
+        decision.sceneId === sceneId
+          ? {
+              ...decision,
+              clip,
+              score: scored.score,
+              reasons: ["手动选择素材", ...scored.reasons],
+              fallbackUsed: false
+            }
+          : decision
+      )
+    };
+    mockSmartEditPlans.set(planId, nextPlan);
+    return nextPlan;
+  },
+  async renderSmartClipEdit(planId: string): Promise<GenerationTask> {
+    if (!USE_MOCK) {
+      try {
+        return await request<GenerationTask>(`/creative-plans/${planId}/render`, {
+          method: "POST",
+          body: JSON.stringify({
+            renderMode: "smart_clip_edit",
+            withSubtitle: true,
+            withTts: false,
+            withBgm: true
+          })
+        });
+      } catch (err) {
+        throw new Error(normalizeSmartEditError(err));
+      }
+    }
+    await wait();
+    if (!mockSmartEditPlans.has(planId)) {
+      await api.createSmartEditPlan(planId);
+    }
+    const task = {
+      ...generationTasks[0],
+      id: `task_smart_${Date.now()}`,
+      creativePlanId: planId,
+      provider: "smart_clip_edit",
+      type: "render",
+      renderMode: "smart_clip_edit",
+      status: "running",
+      progress: 20,
+      currentStep: "Smart Clip Editing 正在合成素材片段",
+      outputVideoUrl: undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      logs: [
+        {
+          id: `log_smart_${Date.now()}`,
+          level: "info",
+          message: "已根据 SmartEditPlan 创建智能剪辑任务",
+          timestamp: new Date().toISOString()
+        }
+      ]
+    };
+    generationTasks.unshift(task as unknown as GenerationTask);
+    return task as unknown as GenerationTask;
   },
   async renderPlan(planId: string, options?: { primaryMaterialId?: string }): Promise<GenerationTask> {
     if (!USE_MOCK) {
