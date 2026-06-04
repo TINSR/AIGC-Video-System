@@ -200,6 +200,8 @@ export type SmartEditDecision = {
   sceneId: string;
   sceneOrder: number;
   sceneGoal?: SceneGoal | null;
+  sceneSubtitle?: string;
+  sceneDuration?: number;
   clip?: MaterialClip;
   score: number;
   reasons: string[];

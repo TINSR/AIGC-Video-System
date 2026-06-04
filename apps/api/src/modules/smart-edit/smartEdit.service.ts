@@ -103,10 +103,15 @@ export class SmartEditService {
     const totalDuration = Object.values(sceneDurations).reduce((sum, value) => sum + value, 0);
     return {
       creativePlanId,
-      decisions: decisions.map((decision) => ({
-        ...decision,
-        clip: decision.clip ? clipById.get(decision.clip.id) ?? decision.clip : undefined,
-      })),
+      decisions: decisions.map((decision) => {
+        const scene = plan.scenes.find((item) => item.id === decision.sceneId);
+        return {
+          ...decision,
+          sceneSubtitle: scene?.subtitle,
+          sceneDuration: scene ? sceneDurations[scene.id] ?? scene.duration : undefined,
+          clip: decision.clip ? clipById.get(decision.clip.id) ?? decision.clip : undefined,
+        };
+      }),
       totalDuration,
     };
   }
@@ -138,6 +143,8 @@ export class SmartEditService {
         sceneId: match.sceneId,
         sceneOrder: scene?.order ?? 0,
         sceneGoal: scene?.goal ?? null,
+        sceneSubtitle: scene?.subtitle,
+        sceneDuration: scene ? sceneDurations[scene.id] ?? scene.duration : undefined,
         clip,
         score: match.score,
         reasons,
