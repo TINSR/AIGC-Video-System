@@ -9,10 +9,12 @@ type Props = {
   analyzing?: boolean;
   matching?: boolean;
   rendering?: boolean;
+  replacingSceneId?: string;
   error?: string;
   onAnalyze: () => void;
   onRematch: () => void;
   onRender: () => void;
+  onReplaceClip: (sceneId: string, clipId: string) => void;
 };
 
 export function SmartEditDecisionPanel({
@@ -22,12 +24,14 @@ export function SmartEditDecisionPanel({
   analyzing,
   matching,
   rendering,
+  replacingSceneId,
   error,
   onAnalyze,
   onRematch,
-  onRender
+  onRender,
+  onReplaceClip
 }: Props) {
-  const busy = loading || analyzing || matching || rendering;
+  const busy = loading || analyzing || matching || rendering || !!replacingSceneId;
   const decisions = plan?.decisions ?? [];
 
   return (
@@ -70,7 +74,13 @@ export function SmartEditDecisionPanel({
           />
         ) : null}
         {decisions.map((decision) => (
-          <SmartEditDecisionCard key={decision.sceneId} decision={decision} />
+          <SmartEditDecisionCard
+            key={decision.sceneId}
+            decision={decision}
+            clips={clips}
+            replacing={replacingSceneId === decision.sceneId}
+            onReplaceClip={onReplaceClip}
+          />
         ))}
       </Space>
     </div>

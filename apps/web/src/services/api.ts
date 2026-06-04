@@ -1003,6 +1003,46 @@ export const api = {
     if (!plan) throw new Error("请先重新匹配");
     return plan;
   },
+  async replaceSmartEditDecisionClip(planId: string, sceneId: string, clipId: string): Promise<SmartEditPlan> {
+    if (!USE_MOCK) {
+      try {
+        return await request<SmartEditPlan>(`/creative-plans/${planId}/smart-edit/plan`, {
+          method: "POST",
+          body: JSON.stringify({
+            force: false,
+            overrides: [{ sceneId, clipId }]
+          })
+        });
+      } catch (err) {
+        throw new Error(normalizeSmartEditError(err));
+      }
+    }
+    await wait(260);
+    const plan = creativePlans.find((item) => item.id === planId) ?? creativePlans[0];
+    const clips = mockMaterialClipsByProduct.get(plan.productId) ?? buildMockMaterialClips(plan.productId);
+    mockMaterialClipsByProduct.set(plan.productId, clips);
+    const clip = clips.find((item) => item.id === clipId);
+    const scene = plan.scenes.find((item) => item.id === sceneId);
+    if (!clip || !scene) throw new Error("未找到要替换的素材片段");
+    const currentPlan = mockSmartEditPlans.get(planId) ?? buildMockSmartEditPlan(plan, clips);
+    const scored = scoreClipForScene(scene, clip);
+    const nextPlan: SmartEditPlan = {
+      ...currentPlan,
+      decisions: currentPlan.decisions.map((decision) =>
+        decision.sceneId === sceneId
+          ? {
+              ...decision,
+              clip,
+              score: scored.score,
+              reasons: ["手动选择素材", ...scored.reasons],
+              fallbackUsed: false
+            }
+          : decision
+      )
+    };
+    mockSmartEditPlans.set(planId, nextPlan);
+    return nextPlan;
+  },
   async renderSmartClipEdit(planId: string): Promise<GenerationTask> {
     if (!USE_MOCK) {
       try {

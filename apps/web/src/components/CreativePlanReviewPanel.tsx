@@ -37,6 +37,7 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
   const [analyzingSmartClips, setAnalyzingSmartClips] = useState(false);
   const [matchingSmartEdit, setMatchingSmartEdit] = useState(false);
   const [renderingSmartEdit, setRenderingSmartEdit] = useState(false);
+  const [replacingSmartEditSceneId, setReplacingSmartEditSceneId] = useState<string>();
   const [smartEditError, setSmartEditError] = useState<string>();
   const [error, setError] = useState<string>();
 
@@ -222,6 +223,22 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
     }
   };
 
+  const replaceSmartEditClip = async (sceneId: string, clipId: string) => {
+    setSmartEditError(undefined);
+    setReplacingSmartEditSceneId(sceneId);
+    try {
+      const nextPlan = await api.replaceSmartEditDecisionClip(currentPlan.id, sceneId, clipId);
+      setSmartEditPlan(nextPlan);
+      message.success("已保存手动替换，并重新生成 SmartEditPlan");
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : "手动替换 clip 失败";
+      setSmartEditError(messageText);
+      message.error(messageText);
+    } finally {
+      setReplacingSmartEditSceneId(undefined);
+    }
+  };
+
   const regenerateScene = async (sceneId: string) => {
     setError(undefined);
     setRegeneratingSceneId(sceneId);
@@ -377,10 +394,12 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
         analyzing={analyzingSmartClips}
         matching={matchingSmartEdit}
         rendering={renderingSmartEdit}
+        replacingSceneId={replacingSmartEditSceneId}
         error={smartEditError}
         onAnalyze={analyzeSmartClips}
         onRematch={rematchSmartEditPlan}
         onRender={renderSmartClipEdit}
+        onReplaceClip={replaceSmartEditClip}
       />
     </Space>
   );
