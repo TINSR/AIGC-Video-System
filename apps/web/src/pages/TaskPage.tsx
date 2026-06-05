@@ -9,10 +9,25 @@ import { api, resolveAssetUrl } from "../services/api";
 const terminalStatuses = new Set(["success", "failed"]);
 const fallbackDisabledMessage = "当前为生产严格模式，FFmpeg fallback 已关闭。";
 
-const providerCopy: Record<GenerationTask["provider"], { text: string; color: string; alertType: "success" | "warning" }> = {
-  seedance_1_5: { text: "Seedance 真实生成", color: "green", alertType: "success" },
-  ffmpeg_fallback: { text: "FFmpeg 演示兜底", color: "gold", alertType: "warning" },
-  smart_clip_edit: { text: "智能素材剪辑", color: "blue", alertType: "success" }
+const providerCopy: Record<GenerationTask["provider"], { text: string; color: string; alertType: "success" | "warning"; description: string }> = {
+  seedance_1_5: {
+    text: "Seedance 真实生成",
+    color: "green",
+    alertType: "success",
+    description: "根据审核后的脚本与首帧图生成新视频"
+  },
+  ffmpeg_fallback: {
+    text: "FFmpeg 演示兜底",
+    color: "gold",
+    alertType: "warning",
+    description: "Seedance 不可用时生成本地兜底视频"
+  },
+  smart_clip_edit: {
+    text: "素材智能剪辑",
+    color: "blue",
+    alertType: "success",
+    description: "根据分镜选择商家真实素材并自动剪辑"
+  }
 };
 
 function formatElapsed(seconds: number) {
@@ -147,32 +162,33 @@ export function TaskPage() {
         <>
           <div className="surface">
             <Descriptions column={{ xs: 1, md: 2 }} size="small">
-              <Descriptions.Item label="status">
+              <Descriptions.Item label="生成状态">
                 <Tag color={task.status === "failed" ? "red" : task.status === "success" ? "green" : "blue"}>
-                  {task.status}
+                  {task.status === "success" ? "已完成" : task.status === "failed" ? "失败" : "生成中"}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="progress">{task.progress}%</Descriptions.Item>
+              <Descriptions.Item label="总进度">{task.progress}%</Descriptions.Item>
               <Descriptions.Item label="已等待">{formatElapsed(elapsedSeconds)}</Descriptions.Item>
-              <Descriptions.Item label="currentStep">{task.currentStep}</Descriptions.Item>
+              <Descriptions.Item label="当前步骤">{task.currentStep}</Descriptions.Item>
               <Descriptions.Item label="正在下载视频">{downloadingVideo ? "是" : "否"}</Descriptions.Item>
-              <Descriptions.Item label="provider">
+              <Descriptions.Item label="生成方式">
                 <Space wrap>
                   <Typography.Text>{task.provider}</Typography.Text>
                   <Tag color={provider?.color}>{provider?.text}</Tag>
                 </Space>
               </Descriptions.Item>
-              <Descriptions.Item label="fallback 状态">{fallbackStatus}</Descriptions.Item>
-              <Descriptions.Item label="outputVideoUrl">
+              <Descriptions.Item label="生成方式说明">{provider?.description}</Descriptions.Item>
+              <Descriptions.Item label="兜底状态">{fallbackStatus}</Descriptions.Item>
+              <Descriptions.Item label="成片地址">
                 {resolvedOutputUrl ? (
                   <a href={resolvedOutputUrl} target="_blank" rel="noreferrer">
-                    {resolvedOutputUrl}
+                    {task.status === "success" ? "点击预览成片" : resolvedOutputUrl}
                   </a>
                 ) : (
                   "暂无"
                 )}
               </Descriptions.Item>
-              <Descriptions.Item label="errorMessage">{task.errorMessage ?? "无"}</Descriptions.Item>
+              <Descriptions.Item label="错误信息">{task.errorMessage ?? "无"}</Descriptions.Item>
             </Descriptions>
           </div>
           <TaskProgressTimeline task={task} />

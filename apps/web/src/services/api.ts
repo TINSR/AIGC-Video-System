@@ -685,6 +685,19 @@ export const api = {
       ...input
     };
   },
+  async deleteProduct(productId: string): Promise<void> {
+    if (!USE_MOCK) {
+      return request<void>(`/products/${productId}`, {
+        method: "DELETE"
+      });
+    }
+    await wait();
+    // Mock模式下模拟删除
+    const index = products.findIndex((p) => p.id === productId);
+    if (index >= 0) {
+      products.splice(index, 1);
+    }
+  },
   async getMaterials(productId: string): Promise<Material[]> {
     if (!USE_MOCK) return request<Material[]>(`/products/${productId}/materials`);
     await wait();

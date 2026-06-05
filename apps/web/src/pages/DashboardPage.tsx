@@ -1,5 +1,5 @@
-import { ArrowRightOutlined, PlusOutlined } from "@ant-design/icons";
-import { Alert, Button, Col, Empty, Row, Space, Spin, Table, Tag, Typography } from "antd";
+import { ArrowRightOutlined, PlusOutlined, VideoCameraOutlined, ScissorOutlined, DeleteOutlined, MoreOutlined } from "@ant-design/icons";
+import { Alert, Button, Col, Dropdown, Empty, Modal, Row, Space, Spin, Table, Tag, Tooltip, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { CreativePlan, GenerationTask, Material, Product, WorkspaceCreativePlanSummary } from "@clipshop/shared";
@@ -44,6 +44,10 @@ export function DashboardPage() {
   const [workspaceSource, setWorkspaceSource] = useState<"aggregate" | "fallback">("fallback");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [messageApi, contextHolder] = message.useMessage();
 
   useEffect(() => {
     let alive = true;
@@ -123,14 +127,51 @@ export function DashboardPage() {
     return Object.fromEntries(Object.entries(grouped).map(([productId, productTasks]) => [productId, latestByTime(productTasks)]));
   }, [tasks]);
 
+  const handleDeleteClick = (product: Product) => {
+    setProductToDelete(product);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!productToDelete) return;
+
+    const latestTask = latestTasksByProduct[productToDelete.id];
+    if (latestTask && (latestTask.status === "running" || latestTask.status === "pending")) {
+      messageApi.warning("该商品有正在渲染中的任务，建议等待任务完成后再删除");
+      setDeleteModalOpen(false);
+      setProductToDelete(null);
+      return;
+    }
+
+    setDeletingProductId(productToDelete.id);
+    try {
+      await api.deleteProduct(productToDelete.id);
+      messageApi.success("商品任务已删除");
+      // 重新加载工作台数据
+      window.location.reload();
+    } catch (err) {
+      messageApi.error(err instanceof Error ? err.message : "删除失败，请稍后重试");
+    } finally {
+      setDeletingProductId(null);
+      setDeleteModalOpen(false);
+      setProductToDelete(null);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteModalOpen(false);
+    setProductToDelete(null);
+  };
+
   if (loading) return <Spin fullscreen />;
 
   return (
     <Space direction="vertical" size={24} className="full-width">
+      {contextHolder}
       <section className="studio-hero">
         <div className="hero-copy">
           <Typography.Text type="secondary">Commerce video creation</Typography.Text>
-          <Typography.Title>创作工作台</Typography.Title>
+          <Typography.Title>商品视频任务工作台</Typography.Title>
           <Typography.Paragraph>
             每个商品都是一个可恢复的创作任务。刷新页面后，可以从商品继续上传素材、审核方案、查看渲染进度或打开成片。
           </Typography.Paragraph>
@@ -221,15 +262,47 @@ export function DashboardPage() {
             }
             const actionLabel = nextActionLabel(summary?.nextAction) ?? primaryText;
 
+            // 判断创作模式可用性
+            const hasMaterials = materialsCount > 0;
+            const hasPlan = !!latestPlan;
+            const canUseSeedance = hasMaterials && hasPlan;
+            const canUseSmartClip = hasMaterials && hasPlan;
+
+            // 智能剪辑不可用的原因
+            const smartClipDisabledReason = !hasMaterials
+              ? "请先上传图片或视频素材"
+              : !hasPlan
+                ? "请先生成方案，智能剪辑需要分镜作为剪辑依据"
+                : "";
+
+            // Seedance不可用的原因
+            const seedanceDisabledReason = !hasMaterials
+              ? "请先上传图片或视频素材"
+              : !hasPlan
+                ? "请先生成方案"
+                : "";
+
             return (
               <Col xs={24} lg={12} key={product.id}>
                 <article className="product-card">
-                  <Space wrap>
-                    <Typography.Text type="secondary">{product.category}</Typography.Text>
-                    <Tag color={latestTask ? taskStatusColor(latestTask.status) : latestPlan ? "blue" : "default"}>
-                      {statusText}
-                    </Tag>
-                  </Space>
+                  <div className="card-header">
+                    <Space wrap>
+                      <Typography.Text type="secondary">{product.category}</Typography.Text>
+                      <Tag color={latestTask ? taskStatusColor(latestTask.status) : latestPlan ? "blue" : "default"}>
+                        {statusText}
+                      </Tag>
+                    </Space>
+                    <Tooltip title="删除商品任务">
+                      <Button
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        loading={deletingProductId === product.id}
+                        onClick={() => handleDeleteClick(product)}
+                        size="small"
+                      />
+                    </Tooltip>
+                  </div>
                   <Typography.Title level={3}>{product.title}</Typography.Title>
                   <Typography.Paragraph>{product.usageScene}</Typography.Paragraph>
                   <Typography.Text type="secondary">
@@ -240,6 +313,32 @@ export function DashboardPage() {
                       <Tag key={point}>{point}</Tag>
                     ))}
                   </Space>
+
+                  {/* 创作模式入口 */}
+                  <div className="creation-mode-actions">
+                    <Tooltip title={seedanceDisabledReason || "使用审核后的脚本和商品首帧图，提交 Seedance 生成完整 AI 视频"}>
+                      <Link to={canUseSeedance ? `/creative-plans/${latestPlan!.id}/review?mode=seedance` : primaryLink}>
+                        <Button
+                          type="primary"
+                          icon={<VideoCameraOutlined />}
+                          disabled={!canUseSeedance}
+                        >
+                          AI 生成视频
+                        </Button>
+                      </Link>
+                    </Tooltip>
+                    <Tooltip title={smartClipDisabledReason || "使用商家上传的真实图片/视频素材，系统会自动切片、匹配分镜并剪辑成片"}>
+                      <Link to={canUseSmartClip ? `/creative-plans/${latestPlan!.id}/review?mode=smart-edit` : primaryLink}>
+                        <Button
+                          icon={<ScissorOutlined />}
+                          disabled={!canUseSmartClip}
+                        >
+                          素材智能剪辑
+                        </Button>
+                      </Link>
+                    </Tooltip>
+                  </div>
+
                   <Space wrap className="card-actions">
                     <Link to={primaryLink}>
                       <Button type="primary">{actionLabel}</Button>
@@ -283,6 +382,27 @@ export function DashboardPage() {
           },
         ]}
       />
+
+      <Modal
+        title="确认删除商品任务"
+        open={deleteModalOpen}
+        onOk={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+        confirmLoading={deletingProductId === productToDelete?.id}
+        okText="确认删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+      >
+        <p>确认删除该商品任务？</p>
+        <p>删除后将移除商品及关联数据，此操作不可撤销。</p>
+        {productToDelete && latestTasksByProduct[productToDelete.id]?.status === "running" && (
+          <Alert
+            type="warning"
+            showIcon
+            message="该商品有正在渲染中的任务，建议等待任务完成后再删除"
+          />
+        )}
+      </Modal>
     </Space>
   );
 }
