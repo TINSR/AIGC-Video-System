@@ -7,6 +7,7 @@ import type { ReferenceVideoCreateInput } from "../services/api";
 
 type Props = {
   onCreated: () => void;
+  mode?: "url" | "upload";
 };
 
 const platformOptions: Array<{ value: ReferenceVideoSourcePlatform; label: string }> = [
@@ -67,7 +68,7 @@ function validatePlayableVideoUrl(raw?: string) {
   }
 }
 
-export function ReferenceVideoImportForm({ onCreated }: Props) {
+export function ReferenceVideoImportForm({ onCreated, mode }: Props) {
   const [urlForm] = Form.useForm();
   const [uploadForm] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
@@ -106,6 +107,102 @@ export function ReferenceVideoImportForm({ onCreated }: Props) {
     return Upload.LIST_IGNORE;
   };
 
+  const urlFormContent = (
+    <Form form={urlForm} layout="vertical" onFinish={createByUrl}>
+      <Form.Item name="title" label="标题" rules={[{ required: true, message: "请输入标题" }]}>
+        <Input placeholder="例如：夏季爆款榨汁杯参考视频" />
+      </Form.Item>
+      <Form.Item name="sourcePlatform" label="来源平台" initialValue="other" rules={[{ required: true }]}>
+        <Select options={platformOptions} />
+      </Form.Item>
+      <Form.Item name="sourceType" label="来源类型" initialValue="public_reference" rules={[{ required: true }]}>
+        <Select options={sourceTypeOptions.filter((item) => item.value !== "merchant_owned")} />
+      </Form.Item>
+      <Form.Item
+        name="sourceUrl"
+        label="公开可播放视频 URL，例如 OSS MP4"
+        rules={[{ validator: (_, value) => validatePlayableVideoUrl(value) }]}
+      >
+        <Input placeholder="https://example.com/reference.mp4" />
+      </Form.Item>
+      <Form.Item name="sourceNote" label="来源说明" rules={[{ required: true, message: "请填写来源说明" }]}>
+        <Input.TextArea rows={3} placeholder="说明授权、来源页面或使用边界" />
+      </Form.Item>
+      <Form.Item name="category" label="类目" rules={[{ required: true, message: "请输入类目" }]}>
+        <Input placeholder="厨房小家电" />
+      </Form.Item>
+      <Form.Item name="keywordsText" label="关键词">
+        <Input placeholder="用逗号分隔，例如：开场强钩子, 商品特写" />
+      </Form.Item>
+      <Button type="primary" htmlType="submit">
+        保存参考视频
+      </Button>
+    </Form>
+  );
+
+  const uploadFormContent = (
+    <Form form={uploadForm} layout="vertical">
+      <Form.Item name="title" label="标题" rules={[{ required: true, message: "请输入标题" }]}>
+        <Input placeholder="例如：商家自有试拍视频" />
+      </Form.Item>
+      <Form.Item label="来源类型">
+        <Input value="merchant_owned" disabled />
+      </Form.Item>
+      <Form.Item name="sourceNote" label="来源说明" rules={[{ required: true, message: "请填写来源说明" }]}>
+        <Input.TextArea rows={3} placeholder="例如：商家自有素材，仅用于结构化拆解" />
+      </Form.Item>
+      <Form.Item name="category" label="类目" rules={[{ required: true, message: "请输入类目" }]}>
+        <Input placeholder="厨房小家电" />
+      </Form.Item>
+      <Form.Item name="keywordsText" label="关键词">
+        <Input placeholder="用逗号分隔" />
+      </Form.Item>
+      <Upload.Dragger accept="video/*" beforeUpload={beforeUpload} showUploadList={false}>
+        <p className="ant-upload-drag-icon">
+          <InboxOutlined />
+        </p>
+        <p className="ant-upload-text">选择或拖拽商家自有视频</p>
+        <p className="ant-upload-hint">仅用于结构化分析，不提供混剪原视频入口。</p>
+      </Upload.Dragger>
+    </Form>
+  );
+
+  // 如果指定了mode，只显示对应的表单
+  if (mode === "url") {
+    return (
+      <div className="surface">
+        {contextHolder}
+        <Space direction="vertical" size={16} className="full-width">
+          <Alert
+            type="info"
+            showIcon
+            message="仅保存结构化分析结果，不复刻、不混剪参考视频。"
+            description="请输入可直接访问的视频文件 URL。平台页面链接暂不支持自动解析。"
+          />
+          {urlFormContent}
+        </Space>
+      </div>
+    );
+  }
+
+  if (mode === "upload") {
+    return (
+      <div className="surface">
+        {contextHolder}
+        <Space direction="vertical" size={16} className="full-width">
+          <Alert
+            type="info"
+            showIcon
+            message="仅保存结构化分析结果，不复刻、不混剪参考视频。"
+            description="上传商家自有视频进行结构化分析。"
+          />
+          {uploadFormContent}
+        </Space>
+      </div>
+    );
+  }
+
+  // 默认显示完整的Tabs版本
   return (
     <div className="surface">
       {contextHolder}
@@ -121,68 +218,12 @@ export function ReferenceVideoImportForm({ onCreated }: Props) {
             {
               key: "url",
               label: "公开可播放 URL 导入",
-              children: (
-                <Form form={urlForm} layout="vertical" onFinish={createByUrl}>
-                  <Form.Item name="title" label="标题" rules={[{ required: true, message: "请输入标题" }]}>
-                    <Input placeholder="例如：夏季爆款榨汁杯参考视频" />
-                  </Form.Item>
-                  <Form.Item name="sourcePlatform" label="来源平台" initialValue="other" rules={[{ required: true }]}>
-                    <Select options={platformOptions} />
-                  </Form.Item>
-                  <Form.Item name="sourceType" label="来源类型" initialValue="public_reference" rules={[{ required: true }]}>
-                    <Select options={sourceTypeOptions.filter((item) => item.value !== "merchant_owned")} />
-                  </Form.Item>
-                  <Form.Item
-                    name="sourceUrl"
-                    label="公开可播放视频 URL，例如 OSS MP4"
-                    rules={[{ validator: (_, value) => validatePlayableVideoUrl(value) }]}
-                  >
-                    <Input placeholder="https://example.com/reference.mp4" />
-                  </Form.Item>
-                  <Form.Item name="sourceNote" label="来源说明" rules={[{ required: true, message: "请填写来源说明" }]}>
-                    <Input.TextArea rows={3} placeholder="说明授权、来源页面或使用边界" />
-                  </Form.Item>
-                  <Form.Item name="category" label="类目" rules={[{ required: true, message: "请输入类目" }]}>
-                    <Input placeholder="厨房小家电" />
-                  </Form.Item>
-                  <Form.Item name="keywordsText" label="关键词">
-                    <Input placeholder="用逗号分隔，例如：开场强钩子, 商品特写" />
-                  </Form.Item>
-                  <Button type="primary" htmlType="submit">
-                    保存参考视频
-                  </Button>
-                </Form>
-              )
+              children: urlFormContent
             },
             {
               key: "upload",
               label: "商家自有视频上传",
-              children: (
-                <Form form={uploadForm} layout="vertical">
-                  <Form.Item name="title" label="标题" rules={[{ required: true, message: "请输入标题" }]}>
-                    <Input placeholder="例如：商家自有试拍视频" />
-                  </Form.Item>
-                  <Form.Item label="来源类型">
-                    <Input value="merchant_owned" disabled />
-                  </Form.Item>
-                  <Form.Item name="sourceNote" label="来源说明" rules={[{ required: true, message: "请填写来源说明" }]}>
-                    <Input.TextArea rows={3} placeholder="例如：商家自有素材，仅用于结构化拆解" />
-                  </Form.Item>
-                  <Form.Item name="category" label="类目" rules={[{ required: true, message: "请输入类目" }]}>
-                    <Input placeholder="厨房小家电" />
-                  </Form.Item>
-                  <Form.Item name="keywordsText" label="关键词">
-                    <Input placeholder="用逗号分隔" />
-                  </Form.Item>
-                  <Upload.Dragger accept="video/*" beforeUpload={beforeUpload} showUploadList={false}>
-                    <p className="ant-upload-drag-icon">
-                      <InboxOutlined />
-                    </p>
-                    <p className="ant-upload-text">选择或拖拽商家自有视频</p>
-                    <p className="ant-upload-hint">仅用于结构化分析，不提供混剪原视频入口。</p>
-                  </Upload.Dragger>
-                </Form>
-              )
+              children: uploadFormContent
             }
           ]}
         />

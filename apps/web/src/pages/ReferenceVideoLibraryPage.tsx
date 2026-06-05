@@ -1,9 +1,9 @@
-import { Alert, Button, Empty, Input, Select, Space, Table, Tag, Typography } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { Alert, Button, Empty, Input, Select, Space, Typography } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import type { ReferenceVideo } from "@clipshop/shared";
-import { ReferenceVideoImportForm } from "../components/ReferenceVideoImportForm";
+import { ReferenceVideoCard } from "../components/ReferenceVideoCard";
+import { ReferenceVideoImportModal } from "../components/ReferenceVideoImportModal";
 import { api } from "../services/api";
 
 const statusCopy: Record<ReferenceVideo["analysisStatus"], { text: string; color: string }> = {
@@ -36,6 +36,7 @@ export function ReferenceVideoLibraryPage() {
   const [status, setStatus] = useState<string>();
   const [category, setCategory] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   const loadVideos = async () => {
     setLoading(true);
@@ -65,46 +66,6 @@ export function ReferenceVideoLibraryPage() {
     [category, keyword, platform, status, videos]
   );
 
-  const columns: ColumnsType<ReferenceVideo> = [
-    {
-      title: "标题",
-      dataIndex: "title",
-      render: (title, record) => <Link to={`/reference-videos/${record.id}`}>{title}</Link>
-    },
-    {
-      title: "来源平台",
-      dataIndex: "sourcePlatform",
-      render: (value: ReferenceVideo["sourcePlatform"]) => platformCopy[value]
-    },
-    {
-      title: "来源类型",
-      dataIndex: "sourceType",
-      render: (value: ReferenceVideo["sourceType"]) => sourceTypeCopy[value]
-    },
-    { title: "类目", dataIndex: "category" },
-    {
-      title: "关键词",
-      dataIndex: "keywords",
-      render: (keywords: string[]) => (
-        <Space wrap>
-          {keywords.map((item) => (
-            <Tag key={item}>{item}</Tag>
-          ))}
-        </Space>
-      )
-    },
-    {
-      title: "分析状态",
-      dataIndex: "analysisStatus",
-      render: (value: ReferenceVideo["analysisStatus"]) => <Tag color={statusCopy[value].color}>{statusCopy[value].text}</Tag>
-    },
-    {
-      title: "创建时间",
-      dataIndex: "createdAt",
-      render: (value: string) => new Date(value).toLocaleString()
-    }
-  ];
-
   return (
     <Space direction="vertical" size={20} className="full-width">
       <section className="section-heading">
@@ -112,20 +73,23 @@ export function ReferenceVideoLibraryPage() {
           <Typography.Text type="secondary">Reference Library</Typography.Text>
           <Typography.Title level={2}>参考视频库</Typography.Title>
           <Typography.Paragraph>
-            导入可直接播放的参考视频 URL 或商家自有视频，只保存结构化拆解报告，不复刻、不混剪参考视频。
+            沉淀可复用的带货视频结构、卖点节奏和剪辑灵感
           </Typography.Paragraph>
         </div>
-        <Button onClick={() => void loadVideos()}>刷新列表</Button>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => setImportModalOpen(true)}
+        >
+          导入参考视频
+        </Button>
       </section>
-
-      <ReferenceVideoImportForm onCreated={loadVideos} />
 
       <div className="surface">
         <Space direction="vertical" size={16} className="full-width">
           {error ? <Alert type="error" showIcon message="参考视频库接口失败" description={error} /> : null}
-          {!error && videos.length === 0 && !loading ? (
-            <Alert type="info" showIcon message="当前没有参考视频。开发占位不会伪造接口成功，请连接 Day12 后端后导入。" />
-          ) : null}
+
+          {/* 筛选栏 */}
           <Space wrap>
             <Select
               allowClear
@@ -146,15 +110,40 @@ export function ReferenceVideoLibraryPage() {
             <Input placeholder="类目筛选" value={category} onChange={(event) => setCategory(event.target.value)} />
             <Input placeholder="关键词筛选" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
           </Space>
-          <Table
-            rowKey="id"
-            loading={loading}
-            columns={columns}
-            dataSource={filteredVideos}
-            locale={{ emptyText: <Empty description={error ? "接口失败" : "暂无参考视频"} /> }}
-          />
+
+          {/* 卡片网格 */}
+          {!error && videos.length === 0 && !loading ? (
+            <Empty
+              description={
+                <div>
+                  <p>暂无参考视频</p>
+                  <p>导入公开可播放 URL 或上传商家自有视频，系统会生成结构化拆解报告。</p>
+                </div>
+              }
+            >
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setImportModalOpen(true)}
+              >
+                导入参考视频
+              </Button>
+            </Empty>
+          ) : (
+            <div className="reference-video-grid">
+              {filteredVideos.map((video) => (
+                <ReferenceVideoCard key={video.id} video={video} />
+              ))}
+            </div>
+          )}
         </Space>
       </div>
+
+      <ReferenceVideoImportModal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onCreated={loadVideos}
+      />
     </Space>
   );
 }
