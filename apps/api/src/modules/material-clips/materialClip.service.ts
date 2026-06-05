@@ -127,10 +127,6 @@ export class MaterialClipService {
       throw new Error('NO_MATERIALS');
     }
 
-    if (force || existing > 0) {
-      await prisma.materialClip.deleteMany({ where: { productId } });
-    }
-
     const analyzer = createMaterialClipAnalysisProvider();
     const drafts: MaterialClipDraft[] = [];
 
@@ -182,25 +178,38 @@ export class MaterialClipService {
       throw new Error('NO_MATERIAL_CLIPS');
     }
 
-    await prisma.materialClip.createMany({
-      data: drafts.map((draft) => ({
-        id: randomUUID(),
-        productId: draft.productId,
-        materialId: draft.materialId,
-        sourceType: draft.sourceType,
-        type: draft.type,
-        fileUrl: draft.fileUrl,
-        thumbnailUrl: draft.thumbnailUrl ?? null,
-        startTime: draft.startTime ?? null,
-        endTime: draft.endTime ?? null,
-        duration: draft.duration,
-        summary: draft.summary,
-        tags: draft.tags,
-        sceneType: draft.sceneType,
-        visualQuality: draft.visualQuality,
-        motionLevel: draft.motionLevel,
-        suitableGoals: draft.suitableGoals,
-      })),
+    const rows = drafts.map((draft) => ({
+      id: randomUUID(),
+      productId: draft.productId,
+      materialId: draft.materialId,
+      sourceType: draft.sourceType,
+      type: draft.type,
+      fileUrl: draft.fileUrl,
+      thumbnailUrl: draft.thumbnailUrl ?? null,
+      startTime: draft.startTime ?? null,
+      endTime: draft.endTime ?? null,
+      duration: draft.duration,
+      summary: draft.summary,
+      tags: draft.tags,
+      sceneType: draft.sceneType,
+      visualQuality: draft.visualQuality,
+      motionLevel: draft.motionLevel,
+      suitableGoals: draft.suitableGoals,
+    }));
+
+    await prisma.$transaction(async (tx) => {
+      if (force || existing > 0) {
+        const previous = await tx.materialClip.findMany({
+          where: { productId },
+          select: { id: true },
+        });
+        const previousIds = previous.map((clip) => clip.id);
+        if (previousIds.length > 0) {
+          await tx.sceneClipMatch.deleteMany({ where: { clipId: { in: previousIds } } });
+        }
+        await tx.materialClip.deleteMany({ where: { productId } });
+      }
+      await tx.materialClip.createMany({ data: rows });
     });
 
     return this.listByProductId(productId);

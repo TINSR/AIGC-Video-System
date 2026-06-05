@@ -1,6 +1,6 @@
 import { Alert, List, Space, Spin, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { CreativePlan, Material, Product } from "@clipshop/shared";
 import { CreativePlanReviewPanel } from "../components/CreativePlanReviewPanel";
 import { api } from "../services/api";
@@ -8,6 +8,7 @@ import { api } from "../services/api";
 export function ReviewPage() {
   const { planId = "plan_001" } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [plan, setPlan] = useState<CreativePlan>();
   const [product, setProduct] = useState<Product>();
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -82,6 +83,7 @@ export function ReviewPage() {
         plan={plan}
         productName={product?.title ?? plan.productId}
         materials={materials}
+        initialMode={searchParams.get("mode") === "smart-edit" ? "smart-edit" : "review"}
         onRender={(taskId) => navigate(`/tasks/${taskId}`)}
       />
     </Space>

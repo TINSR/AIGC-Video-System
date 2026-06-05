@@ -32,8 +32,7 @@ type Props = {
 };
 
 export function ReferenceVideoCard({ video }: Props) {
-  // 封面策略：优先使用fileUrl，其次使用默认封面
-  const coverUrl = resolveAssetUrl(video.fileUrl) ?? DEFAULT_REFERENCE_VIDEO_COVER;
+  const videoUrl = resolveAssetUrl(video.fileUrl ?? video.publicUrl);
   const displayKeywords = video.keywords.slice(0, 3);
 
   return (
@@ -42,15 +41,27 @@ export function ReferenceVideoCard({ video }: Props) {
         hoverable
         cover={
           <div className="reference-video-cover">
-            <img
-              alt={video.title}
-              src={coverUrl}
-              style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover" }}
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = DEFAULT_REFERENCE_VIDEO_COVER;
-              }}
-            />
+            {videoUrl ? (
+              <video
+                aria-label={video.title}
+                src={videoUrl}
+                poster={DEFAULT_REFERENCE_VIDEO_COVER}
+                preload="metadata"
+                muted
+                playsInline
+                onLoadedMetadata={(event) => {
+                  const element = event.currentTarget;
+                  if (element.duration > 0) element.currentTime = Math.min(0.1, element.duration);
+                }}
+                style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover" }}
+              />
+            ) : (
+              <img
+                alt={video.title}
+                src={DEFAULT_REFERENCE_VIDEO_COVER}
+                style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover" }}
+              />
+            )}
           </div>
         }
         styles={{ body: { padding: "12px" } }}

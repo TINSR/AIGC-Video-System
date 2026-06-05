@@ -80,9 +80,19 @@ function matchSellingPoints(
     .join(' ')
     .toLowerCase();
 
-  return input.productSellingPoints.filter((sp) =>
-    sp.split(/[,，、\s]+/).some((word) => word.length >= 2 && text.includes(word.toLowerCase())),
-  );
+  return input.productSellingPoints.filter((sellingPoint) => {
+    const normalized = sellingPoint.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+    if (normalized.length < 2) return false;
+    if (text.includes(normalized) || normalized.includes(text.trim())) return true;
+
+    const fragments = new Set<string>();
+    for (let size = Math.min(4, normalized.length); size >= 2; size -= 1) {
+      for (let index = 0; index <= normalized.length - size; index += 1) {
+        fragments.add(normalized.slice(index, index + size));
+      }
+    }
+    return [...fragments].some((fragment) => text.includes(fragment));
+  });
 }
 
 function buildSummary(input: ClipAnalysisInput, sceneType: ClipProfile['sceneType']): string {

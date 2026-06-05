@@ -91,3 +91,24 @@ export const updateProduct = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const deleteProduct = async (req: Request, res: Response) => {
+  try {
+    const deleted = await productService.deleteProduct(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: '商品不存在' },
+      });
+    }
+    res.json({ success: true });
+  } catch (error: unknown) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error instanceof Error ? error.message : '删除商品失败',
+      },
+    });
+  }
+};

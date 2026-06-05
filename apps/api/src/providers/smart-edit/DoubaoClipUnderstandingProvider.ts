@@ -148,6 +148,11 @@ export class DoubaoClipUnderstandingProvider implements IClipUnderstandingProvid
       }
     }
 
+    const hasImageInput = imageContents.some((part) => part.type === 'image_url' || part.type === 'image');
+    if (!hasImageInput) {
+      return null;
+    }
+
     const userContent = [
       ...imageContents,
       { type: 'text', text: buildUserPrompt(input) },
@@ -163,10 +168,9 @@ export class DoubaoClipUnderstandingProvider implements IClipUnderstandingProvid
       max_tokens: 1024,
     };
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SMART_EDIT_CLIP_ANALYSIS_TIMEOUT_MS);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), SMART_EDIT_CLIP_ANALYSIS_TIMEOUT_MS);
-
       const response = await fetch(buildApiUrl(baseUrl, provider), {
         method: 'POST',
         headers: {
@@ -176,8 +180,6 @@ export class DoubaoClipUnderstandingProvider implements IClipUnderstandingProvid
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-
-      clearTimeout(timeout);
 
       if (!response.ok) {
         console.warn(`[DoubaoClipUnderstanding] API ${response.status}`);
@@ -214,6 +216,8 @@ export class DoubaoClipUnderstandingProvider implements IClipUnderstandingProvid
     } catch (error) {
       console.warn('[DoubaoClipUnderstanding] Failed:', error instanceof Error ? error.message : error);
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

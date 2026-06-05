@@ -1,5 +1,5 @@
 import { Alert, Button, Col, Descriptions, Row, Space, Tag, Typography, message } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CreativePlan, Material, Scene } from "@clipshop/shared";
 import { SCENE_PREVIEW_AVAILABLE, api, resolveAssetUrl } from "../services/api";
 import type { MaterialClip, SmartEditPlan } from "../services/api";
@@ -15,6 +15,7 @@ type Props = {
   plan: CreativePlan;
   productName: string;
   materials: Material[];
+  initialMode?: "review" | "smart-edit";
   onRender: (taskId: string) => void;
 };
 
@@ -22,7 +23,7 @@ type EditableScenePatch = Partial<
   Pick<Scene, "duration" | "transition" | "subtitle" | "voiceover" | "seedancePrompt">
 >;
 
-export function CreativePlanReviewPanel({ plan, productName, materials, onRender }: Props) {
+export function CreativePlanReviewPanel({ plan, productName, materials, initialMode = "review", onRender }: Props) {
   const [currentPlan, setCurrentPlan] = useState(plan);
   const [scenes, setScenes] = useState(() => [...plan.scenes].sort((a, b) => a.order - b.order));
   const [dirty, setDirty] = useState(false);
@@ -40,6 +41,7 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
   const [replacingSmartEditSceneId, setReplacingSmartEditSceneId] = useState<string>();
   const [smartEditError, setSmartEditError] = useState<string>();
   const [error, setError] = useState<string>();
+  const smartEditSectionRef = useRef<HTMLDivElement>(null);
 
   const isApproved = currentPlan.status === "approved";
   const primaryMaterialId = pickPrimaryMaterialId(
@@ -80,6 +82,11 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
       alive = false;
     };
   }, [plan.id, plan.productId]);
+
+  useEffect(() => {
+    if (initialMode !== "smart-edit" || smartEditLoading) return;
+    smartEditSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [initialMode, smartEditLoading]);
 
   const normalizeScenes = (nextScenes: Scene[]) =>
     nextScenes.map((scene, index) => ({
@@ -387,20 +394,22 @@ export function CreativePlanReviewPanel({ plan, productName, materials, onRender
         <Alert type="warning" showIcon message="当前方案还没有分镜。" />
       )}
 
-      <SmartEditDecisionPanel
-        clips={smartClips}
-        plan={smartEditPlan}
-        loading={smartEditLoading}
-        analyzing={analyzingSmartClips}
-        matching={matchingSmartEdit}
-        rendering={renderingSmartEdit}
-        replacingSceneId={replacingSmartEditSceneId}
-        error={smartEditError}
-        onAnalyze={analyzeSmartClips}
-        onRematch={rematchSmartEditPlan}
-        onRender={renderSmartClipEdit}
-        onReplaceClip={replaceSmartEditClip}
-      />
+      <div ref={smartEditSectionRef}>
+        <SmartEditDecisionPanel
+          clips={smartClips}
+          plan={smartEditPlan}
+          loading={smartEditLoading}
+          analyzing={analyzingSmartClips}
+          matching={matchingSmartEdit}
+          rendering={renderingSmartEdit}
+          replacingSceneId={replacingSmartEditSceneId}
+          error={smartEditError}
+          onAnalyze={analyzeSmartClips}
+          onRematch={rematchSmartEditPlan}
+          onRender={renderSmartClipEdit}
+          onReplaceClip={replaceSmartEditClip}
+        />
+      </div>
     </Space>
   );
 }
