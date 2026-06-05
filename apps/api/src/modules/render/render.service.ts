@@ -7,8 +7,15 @@ import { taskStore, planStore, taskMaterialsStore } from '../../memory-store';
 import { downloadVideoToOutputs } from '../../utils/videoDownload';
 import { enrichTaskOutputVideo } from '../../utils/outputVideoUrl';
 import { CreativePlanService } from '../creative-plans/creativePlan.service';
+import { SmartEditService } from '../smart-edit/smartEdit.service';
 import { listTasksFromDatabase, loadTaskFromDatabase, persistTaskToDatabase } from './taskPersistence';
 import type { GenerationTask, CreativePlan, Material, Scene, TaskLog } from '@shared/types';
+
+export type SmartClipRenderOptions = {
+  withSubtitle?: boolean;
+  withTts?: boolean;
+  withBgm?: boolean;
+};
 
 // Day 1 任务进度约定
 const STEP_MAP: Record<number, string> = {
@@ -20,6 +27,17 @@ const STEP_MAP: Record<number, string> = {
   80: '拼接视频与 BGM',
   95: '导出 mp4',
   100: '生成完成',
+};
+
+const SMART_CLIP_STEP_MAP: Record<number, string> = {
+  0: '任务已创建',
+  10: '读取方案与素材',
+  25: '分析素材 clips',
+  40: '匹配分镜',
+  55: '生成字幕',
+  70: 'FFmpeg 合成',
+  90: '导出 mp4',
+  100: '智能剪辑完成',
 };
 
 function makeLog(level: TaskLog['level'], message: string): TaskLog {
@@ -40,11 +58,13 @@ export class RenderService {
   private seedanceProvider: Seedance15Provider;
   private ffmpegProvider: FFmpegComposeProvider;
   private creativePlanService: CreativePlanService;
+  private smartEditService: SmartEditService;
 
   constructor() {
     this.seedanceProvider = new Seedance15Provider();
     this.ffmpegProvider = new FFmpegComposeProvider();
     this.creativePlanService = new CreativePlanService();
+    this.smartEditService = new SmartEditService();
   }
 
   private async failSeedanceWithoutFallback(task: GenerationTask, reason: string): Promise<void> {
@@ -138,6 +158,156 @@ export class RenderService {
     });
 
     return task;
+  }
+
+  async createSmartClipRenderTask(
+    creativePlan: CreativePlan,
+    materials: Material[],
+    options: SmartClipRenderOptions = {}
+  ): Promise<GenerationTask> {
+    if (!creativePlan.scenes || creativePlan.scenes.length === 0) {
+      throw new Error('创意方案无分镜，无法创建智能剪辑任务');
+    }
+
+    const task: GenerationTask = {
+      id: randomUUID(),
+      productId: creativePlan.productId,
+      creativePlanId: creativePlan.id,
+      status: 'pending',
+      progress: 0,
+      currentStep: SMART_CLIP_STEP_MAP[0],
+      logs: [makeLog('info', '智能剪辑任务已创建')],
+      provider: 'smart_clip_edit',
+      type: 'render',
+      renderMode: 'smart_clip_edit',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await syncTask(task);
+    taskMaterialsStore.set(task.id, materials);
+
+    this.executeSmartClipRenderTask(task, creativePlan, materials, options).catch(async (error) => {
+      console.error('智能剪辑任务失败:', error);
+      task.status = 'failed';
+      task.errorMessage = error instanceof Error ? error.message : '智能剪辑异常';
+      task.logs.push(makeLog('error', `智能剪辑异常：${task.errorMessage}`));
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+    });
+
+    return task;
+  }
+
+  private async executeSmartClipRenderTask(
+    task: GenerationTask,
+    creativePlan: CreativePlan,
+    materials: Material[],
+    options: SmartClipRenderOptions
+  ): Promise<void> {
+    try {
+      task.status = 'running';
+      task.progress = 10;
+      task.currentStep = SMART_CLIP_STEP_MAP[10];
+      task.logs.push(
+        makeLog('info', `读取 CreativePlan (${creativePlan.id})，共 ${creativePlan.scenes.length} 个分镜`)
+      );
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+
+      task.progress = 25;
+      task.currentStep = SMART_CLIP_STEP_MAP[25];
+      task.logs.push(makeLog('info', '分析素材 clips'));
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+
+      let smartEditPlan;
+      try {
+        smartEditPlan = await this.smartEditService.getPlan(creativePlan.id);
+      } catch {
+        smartEditPlan = await this.smartEditService.buildPlan(creativePlan.id, true);
+      }
+
+      task.progress = 40;
+      task.currentStep = SMART_CLIP_STEP_MAP[40];
+      task.logs.push(
+        makeLog(
+          'info',
+          `匹配分镜完成：${smartEditPlan.decisions.map((item) => `scene${item.sceneOrder}=${item.clip?.id ?? 'fallback'}(${item.score})`).join(', ')}`
+        )
+      );
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+
+      task.progress = 55;
+      task.currentStep = SMART_CLIP_STEP_MAP[55];
+      if (options.withTts) {
+        task.logs.push(makeLog('warn', 'TTS 暂未配置，跳过配音合成'));
+      } else {
+        task.logs.push(makeLog('info', '准备字幕烧录'));
+      }
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+
+      const ffmpegCheck = await this.ffmpegProvider.checkFFmpegAvailability();
+      if (!ffmpegCheck.available) {
+        task.status = 'failed';
+        task.errorMessage = `FFmpeg 不可用：${ffmpegCheck.error}`;
+        task.logs.push(makeLog('error', task.errorMessage));
+        task.updatedAt = new Date().toISOString();
+        await syncTask(task);
+        return;
+      }
+
+      task.progress = 70;
+      task.currentStep = SMART_CLIP_STEP_MAP[70];
+      task.logs.push(makeLog('info', `FFmpeg 可用（版本: ${ffmpegCheck.version}），开始智能剪辑合成`));
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+
+      const outputDir = process.env.OUTPUT_DIR || './outputs';
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+      const outputPath = `${outputDir}/${task.id}.mp4`;
+      const sceneDurations = this.smartEditService.getSceneDurationsForPlan(
+        creativePlan.id,
+        creativePlan.scenes
+      );
+
+      const result = await this.ffmpegProvider.generateFromSmartEdit({
+        plan: creativePlan,
+        decisions: smartEditPlan.decisions,
+        sceneDurations,
+        outputPath,
+        withSubtitle: options.withSubtitle !== false,
+        bgmUrl: options.withBgm ? process.env.SMART_EDIT_BGM_URL : undefined,
+      });
+
+      task.progress = 90;
+      task.currentStep = SMART_CLIP_STEP_MAP[90];
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+
+      if (result.success && fs.existsSync(outputPath)) {
+        task.progress = 100;
+        task.status = 'success';
+        task.outputVideoUrl = `/outputs/${task.id}.mp4`;
+        task.currentStep = SMART_CLIP_STEP_MAP[100];
+        task.logs.push(makeLog('info', `智能剪辑完成，输出：${task.outputVideoUrl}`));
+      } else {
+        task.status = 'failed';
+        task.errorMessage = result.errorMessage || 'SMART_EDIT_FAILED';
+        task.logs.push(makeLog('error', `智能剪辑失败：${task.errorMessage}`));
+      }
+    } catch (error) {
+      task.status = 'failed';
+      task.errorMessage = error instanceof Error ? error.message : 'SMART_EDIT_FAILED';
+      task.logs.push(makeLog('error', `智能剪辑失败：${task.errorMessage}`));
+    } finally {
+      task.updatedAt = new Date().toISOString();
+      await syncTask(task);
+    }
   }
 
   // 执行渲染任务 — 每次状态变更后同步写入 taskStore
@@ -678,7 +848,16 @@ export class RenderService {
     task.updatedAt = new Date().toISOString();
     await syncTask(task);
 
-    this.executeRenderTask(task, creativePlan, materials).catch(async (error) => {
+    const retryPromise =
+      task.renderMode === 'smart_clip_edit'
+        ? this.executeSmartClipRenderTask(task, creativePlan, materials, {
+            withSubtitle: true,
+            withTts: false,
+            withBgm: false,
+          })
+        : this.executeRenderTask(task, creativePlan, materials);
+
+    retryPromise.catch(async (error) => {
       console.error('重试任务失败:', error);
       task.status = 'failed';
       task.errorMessage = error instanceof Error ? error.message : '重试异常';

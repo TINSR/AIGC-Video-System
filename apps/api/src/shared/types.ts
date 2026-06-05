@@ -161,7 +161,66 @@ export type MaterialUsage =
   | 'keyframe_reference'
   | 'prompt_only';
 
-export type RenderMode = 'full_video' | 'scene_clips';
+export type MaterialClipSourceType = 'merchant_upload' | 'seedance_generated' | 'system_asset';
+export type MaterialClipType = 'image' | 'video_clip';
+export type ClipSceneType =
+  | 'product_closeup'
+  | 'usage_scene'
+  | 'detail'
+  | 'packaging'
+  | 'lifestyle'
+  | 'cta';
+export type MotionLevel = 'low' | 'medium' | 'high';
+
+export type MaterialClip = {
+  id: string;
+  productId: string;
+  materialId: string;
+  sourceType: MaterialClipSourceType;
+  type: MaterialClipType;
+  fileUrl: string;
+  thumbnailUrl?: string;
+  startTime?: number;
+  endTime?: number;
+  duration: number;
+  summary: string;
+  tags: string[];
+  sceneType: ClipSceneType;
+  visualQuality: number;
+  motionLevel: MotionLevel;
+  suitableGoals: SceneGoal[];
+  createdAt: string;
+};
+
+export type SceneClipMatch = {
+  id: string;
+  creativePlanId: string;
+  sceneId: string;
+  clipId: string;
+  score: number;
+  reasons: string[];
+  createdAt: string;
+};
+
+export type SmartEditDecision = {
+  sceneId: string;
+  sceneOrder: number;
+  sceneGoal?: SceneGoal | null;
+  sceneSubtitle?: string;
+  sceneDuration?: number;
+  clip?: MaterialClip;
+  score: number;
+  reasons: string[];
+  fallbackUsed: boolean;
+};
+
+export type SmartEditPlan = {
+  creativePlanId: string;
+  decisions: SmartEditDecision[];
+  totalDuration: number;
+};
+
+export type RenderMode = 'full_video' | 'scene_clips' | 'smart_clip_edit';
 
 export type AgentTrace = {
   agent: string;
@@ -260,7 +319,7 @@ export type GenerationTask = {
   logs: TaskLog[];
   outputVideoUrl?: string;
   outputVideoHint?: string;
-  provider: 'seedance_1_5' | 'ffmpeg_fallback';
+  provider: 'seedance_1_5' | 'ffmpeg_fallback' | 'smart_clip_edit';
   errorMessage?: string;
   type?: 'creative_strategy' | 'creative_plan' | 'render' | 'scene_render';
   resultId?: string;

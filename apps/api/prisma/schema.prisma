@@ -185,3 +185,39 @@ model MetricsImportBatch {
   errors       Json
   createdAt    DateTime @default(now())
 }
+
+model MaterialClip {
+  id            String   @id @default(cuid())
+  productId     String
+  materialId    String
+  sourceType    String
+  type          String
+  fileUrl       String   @db.Text
+  thumbnailUrl  String?
+  startTime     Float?
+  endTime       Float?
+  duration      Float
+  summary       String   @db.Text
+  tags          Json
+  sceneType     String
+  visualQuality Float
+  motionLevel   String
+  suitableGoals Json
+  createdAt     DateTime @default(now())
+
+  @@index([productId])
+  @@index([materialId])
+}
+
+model SceneClipMatch {
+  id             String   @id @default(cuid())
+  creativePlanId String
+  sceneId        String
+  clipId         String
+  score          Float
+  reasons        Json
+  createdAt      DateTime @default(now())
+
+  @@index([creativePlanId])
+  @@index([sceneId])
+}
