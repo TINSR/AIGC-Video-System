@@ -58,19 +58,20 @@ async function detectSceneChanges(
   threshold: number,
 ): Promise<number[]> {
   const safeThreshold = Math.max(0.20, Math.min(0.45, threshold));
-  const cmd = `"${ffmpegPath}" -i "${filePath}" -vf "select='gt(scene,${safeThreshold})',showinfo" -f null - 2>&1`;
+  const cmd = `"${ffmpegPath}" -i "${filePath}" -vf "select='gt(scene,${safeThreshold})',showinfo" -f null -`;
 
   try {
-    const { stderr } = await execAsync(cmd, {
+    const { stdout, stderr } = await execAsync(cmd, {
       timeout: 30_000,
       maxBuffer: 10 * 1024 * 1024,
     });
 
     const boundaries: number[] = [];
     const regex = /pts_time:\s*([\d.]+)/g;
+    const output = `${stdout}\n${stderr}`;
     let match: RegExpExecArray | null;
 
-    while ((match = regex.exec(stderr)) !== null) {
+    while ((match = regex.exec(output)) !== null) {
       const t = parseFloat(match[1]);
       if (!isNaN(t) && t > 0) {
         boundaries.push(t);
@@ -278,11 +279,7 @@ export class SceneBoundaryDetector {
       return segments;
     } catch (error) {
       console.warn('[SceneBoundaryDetector] Detection failed, using fixed fallback:', error instanceof Error ? error.message : error);
-      return buildFixedFallbackSegments(
-        FIXED_FALLBACK_DURATION * SMART_EDIT_MAX_CLIPS_PER_MATERIAL,
-        materialId,
-        sourceFile,
-      );
+      return [];
     }
   }
 }

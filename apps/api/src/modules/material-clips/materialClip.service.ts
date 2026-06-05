@@ -6,6 +6,7 @@ import fs from 'fs';
 import prisma from '../../config/prisma';
 import { MaterialService } from '../materials/material.service';
 import { createMaterialClipAnalysisProvider } from '../../providers/smart-edit/smartEditProviders';
+import { SceneBoundaryDetector } from '../../providers/smart-edit/SceneBoundaryDetector';
 import type { MaterialClip } from '@shared/types';
 import {
   DEFAULT_IMAGE_CLIP_DURATION,
@@ -105,6 +106,7 @@ async function probeVideoDuration(fileUrl: string): Promise<number> {
 
 export class MaterialClipService {
   private materialService = new MaterialService();
+  private boundaryDetector = new SceneBoundaryDetector();
 
   async listByProductId(productId: string): Promise<MaterialClip[]> {
     const records = await prisma.materialClip.findMany({
@@ -146,24 +148,32 @@ export class MaterialClipService {
 
       if (material.type === 'video') {
         const totalDuration = material.duration ?? (await probeVideoDuration(material.fileUrl));
-        let start = 0;
-        let segmentCount = 0;
-        while (start < totalDuration && segmentCount < MAX_VIDEO_CLIPS_PER_MATERIAL) {
-          const segmentDuration = Math.min(VIDEO_SEGMENT_SECONDS, totalDuration - start);
-          if (segmentDuration <= 0.2) {
-            break;
-          }
+        const localPath = resolveLocalMediaPath(material.fileUrl);
+        const detected = localPath
+          ? await this.boundaryDetector.detectSegments(material.id, localPath, false)
+          : [];
+        const segments = detected.length > 0
+          ? detected
+          : Array.from({ length: MAX_VIDEO_CLIPS_PER_MATERIAL }, (_, index) => {
+              const startTime = index * VIDEO_SEGMENT_SECONDS;
+              const duration = Math.min(VIDEO_SEGMENT_SECONDS, totalDuration - startTime);
+              return {
+                startTime,
+                endTime: startTime + duration,
+                duration,
+              };
+            }).filter((segment) => segment.duration > 0.2 && segment.startTime < totalDuration);
+
+        for (const segment of segments) {
           drafts.push(
             await analyzer.analyzeSegment({
               material,
               productId,
-              startTime: start,
-              endTime: start + segmentDuration,
-              duration: segmentDuration,
+              startTime: segment.startTime,
+              endTime: segment.endTime,
+              duration: segment.duration,
             })
           );
-          start += VIDEO_SEGMENT_SECONDS;
-          segmentCount += 1;
         }
       }
     }

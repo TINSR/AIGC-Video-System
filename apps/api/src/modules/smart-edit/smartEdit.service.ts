@@ -3,7 +3,7 @@ import prisma from '../../config/prisma';
 import { CreativePlanService } from '../creative-plans/creativePlan.service';
 import { MaterialClipService } from '../material-clips/materialClip.service';
 import { MaterialService } from '../materials/material.service';
-import { createSmartEditMatchingProvider } from '../../providers/smart-edit/smartEditProviders';
+import { SmartEditPlanner } from '../../providers/smart-edit/SmartEditPlanner';
 import { buildMatchReasons, computeMatchScore } from '../../providers/smart-edit/smartEditScoring';
 import type { Material, MaterialClip, Scene, SmartEditPlan } from '@shared/types';
 
@@ -53,6 +53,7 @@ export class SmartEditService {
   private creativePlanService = new CreativePlanService();
   private materialClipService = new MaterialClipService();
   private materialService = new MaterialService();
+  private planner = new SmartEditPlanner();
 
   async buildPlan(creativePlanId: string, force = false, overrides: SmartEditOverride[] = []): Promise<SmartEditPlan> {
     const plan = await this.creativePlanService.getCreativePlan(creativePlanId);
@@ -75,16 +76,7 @@ export class SmartEditService {
       duration: sceneDurations[scene.id] ?? scene.duration,
     }));
 
-    const matcher = createSmartEditMatchingProvider();
-    const decisions = matcher.matchScenes({
-      scenes: scenesWithDuration,
-      clips,
-      materials,
-    });
-
-    if (force) {
-      await prisma.sceneClipMatch.deleteMany({ where: { creativePlanId } });
-    } else {
+    if (!force) {
       const existing = await prisma.sceneClipMatch.count({ where: { creativePlanId } });
       if (existing > 0) {
         if (overrides.length > 0) {
@@ -92,6 +84,23 @@ export class SmartEditService {
         }
         return this.getPlan(creativePlanId);
       }
+    }
+
+    const advanced = await this.planner.generatePlanAdvanced(
+      creativePlanId,
+      scenesWithDuration,
+      clips,
+      materials,
+      {
+        name: plan.title,
+        category: '商品',
+        sellingPoints: plan.creativeStrategy?.sellingPointOrder ?? [],
+      },
+    );
+    const decisions = advanced.plan.decisions;
+
+    if (force) {
+      await prisma.sceneClipMatch.deleteMany({ where: { creativePlanId } });
     }
 
     const clipById = new Map(clips.map((clip) => [clip.id, clip]));
@@ -155,16 +164,16 @@ export class SmartEditService {
     for (const override of overrides) {
       const scene = sceneById.get(override.sceneId);
       const clip = clipById.get(override.clipId);
-        if (!scene || !clip) {
-          throw new Error('SMART_EDIT_OVERRIDE_NOT_FOUND');
-        }
+      if (!scene || !clip) {
+        throw new Error('SMART_EDIT_OVERRIDE_NOT_FOUND');
+      }
 
-        const sceneDuration = sceneDurations[scene.id] ?? scene.duration;
-        const sceneWithDuration = { ...scene, duration: sceneDuration };
+      const sceneDuration = sceneDurations[scene.id] ?? scene.duration;
+      const sceneWithDuration = { ...scene, duration: sceneDuration };
 
-        await prisma.sceneClipMatch.deleteMany({
-          where: { creativePlanId, sceneId: scene.id },
-        });
+      await prisma.sceneClipMatch.deleteMany({
+        where: { creativePlanId, sceneId: scene.id },
+      });
       await prisma.sceneClipMatch.create({
         data: {
           id: randomUUID(),

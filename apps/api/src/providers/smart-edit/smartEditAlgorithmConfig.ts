@@ -36,19 +36,28 @@ export const SMART_EDIT_CLIP_ANALYSIS_TIMEOUT_MS = parseInt(
   10,
 );
 
-export const SMART_EDIT_CLIP_ANALYSIS_CONCURRENCY = parseInt(
-  process.env.SMART_EDIT_CLIP_ANALYSIS_CONCURRENCY || '2',
-  10,
+function positiveInteger(value: string | undefined, fallback: number, max: number): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+}
+
+export const SMART_EDIT_CLIP_ANALYSIS_CONCURRENCY = positiveInteger(
+  process.env.SMART_EDIT_CLIP_ANALYSIS_CONCURRENCY,
+  2,
+  8,
 );
 
-export const SMART_EDIT_BEAM_WIDTH = parseInt(
-  process.env.SMART_EDIT_BEAM_WIDTH || '20',
-  10,
+export const SMART_EDIT_BEAM_WIDTH = positiveInteger(
+  process.env.SMART_EDIT_BEAM_WIDTH,
+  20,
+  100,
 );
 
-export const SMART_EDIT_TOP_CANDIDATES_PER_SCENE = parseInt(
-  process.env.SMART_EDIT_TOP_CANDIDATES_PER_SCENE || '8',
-  10,
+export const SMART_EDIT_TOP_CANDIDATES_PER_SCENE = positiveInteger(
+  process.env.SMART_EDIT_TOP_CANDIDATES_PER_SCENE,
+  8,
+  30,
 );
 
 export const NOISE_BOUNDARY_THRESHOLD = 0.4;

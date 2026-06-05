@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fs from 'fs';
 import type {
   Material,
   Scene,
@@ -18,9 +19,17 @@ import { GlobalSceneClipOptimizer } from './GlobalSceneClipOptimizer';
 import { SMART_EDIT_CLIP_ANALYSIS_CONCURRENCY } from './smartEditAlgorithmConfig';
 
 function resolveFilePath(material: Material): string {
-  if (path.isAbsolute(material.fileUrl)) return material.fileUrl;
   const uploadsDir = path.resolve(process.env.UPLOAD_DIR || './uploads');
-  return path.join(uploadsDir, material.fileUrl);
+  if (path.isAbsolute(material.fileUrl) && fs.existsSync(material.fileUrl)) {
+    return material.fileUrl;
+  }
+  if (material.fileUrl.startsWith('/uploads/')) {
+    return path.join(uploadsDir, material.fileUrl.slice('/uploads/'.length));
+  }
+  if (material.fileUrl.startsWith('uploads/')) {
+    return path.join(uploadsDir, material.fileUrl.slice('uploads/'.length));
+  }
+  return path.resolve(material.fileUrl);
 }
 
 export class SmartEditPlanner {
@@ -103,7 +112,27 @@ export class SmartEditPlanner {
     // Step 2: Create MaterialClips from segments (for backward compatibility)
     const clips = this.segmentsToClips(materials, allSegments);
 
-    // Step 3: Extract keyframes and build ClipProfiles
+    return this.generatePlanAdvanced(
+      creativePlanId,
+      orderedScenes,
+      clips,
+      materials,
+      productContext,
+    );
+  }
+
+  async generatePlanAdvanced(
+    creativePlanId: string,
+    scenes: Scene[],
+    clips: MaterialClip[],
+    materials: Material[],
+    productContext?: {
+      name: string;
+      category: string;
+      sellingPoints: string[];
+    },
+  ): Promise<{ clips: MaterialClip[]; profiles: Map<string, ClipProfile>; plan: SmartEditPlan }> {
+    const orderedScenes = [...scenes].sort((a, b) => a.order - b.order);
     const profiles = new Map<string, ClipProfile>();
     const useContext = productContext ?? {
       name: materials[0]?.title || '商品',
@@ -111,24 +140,42 @@ export class SmartEditPlanner {
       sellingPoints: [],
     };
 
-    // Process segments with concurrency limit
-    const segmentChunks = chunkArray(allSegments, SMART_EDIT_CLIP_ANALYSIS_CONCURRENCY);
+    const analysisItems = clips
+      .map((clip) => {
+        const material = materials.find((item) => item.id === clip.materialId);
+        if (!material) return null;
+        const isImage = clip.type === 'image' || material.type === 'image';
+        const startTime = clip.startTime ?? 0;
+        const duration = clip.duration;
+        return {
+          clip,
+          material,
+          segment: {
+            materialId: material.id,
+            sourceFile: resolveFilePath(material),
+            startTime,
+            endTime: clip.endTime ?? startTime + duration,
+            duration,
+            detectionMethod: isImage ? 'image' as const : 'scene_change' as const,
+          },
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    const segmentChunks = chunkArray(analysisItems, SMART_EDIT_CLIP_ANALYSIS_CONCURRENCY);
     for (const chunk of segmentChunks) {
       const results = await Promise.all(
-        chunk.map(async (segment) => {
-          const material = materials.find((m) => m.id === segment.materialId);
-          if (!material) return null;
-
-          const keyframes = await this.keyframeExtractor.extract(segment);
-
-          const clipId = clips.find(
-            (c) => c.materialId === segment.materialId &&
-              c.startTime === segment.startTime &&
-              c.endTime === segment.endTime,
-          )?.id || segment.materialId;
+        chunk.map(async ({ clip, material, segment }) => {
+          const keyframes = segment.detectionMethod === 'image' && fs.existsSync(segment.sourceFile)
+            ? {
+                startFramePath: segment.sourceFile,
+                middleFramePath: segment.sourceFile,
+                endFramePath: segment.sourceFile,
+              }
+            : await this.keyframeExtractor.extract(segment);
 
           const analysisInput: ClipAnalysisInput = {
-            clipId,
+            clipId: clip.id,
             materialId: segment.materialId,
             materialTitle: material.title,
             materialTags: material.tags,
@@ -159,11 +206,11 @@ export class SmartEditPlanner {
           }
 
           // Cleanup keyframes
-          if (keyframes) {
+          if (keyframes && segment.detectionMethod !== 'image') {
             this.keyframeExtractor.cleanup(keyframes);
           }
 
-          return { clipId, profile };
+          return { clipId: clip.id, profile };
         }),
       );
 
@@ -174,16 +221,12 @@ export class SmartEditPlanner {
       }
     }
 
-    // Step 4: Global beam search optimization
     const decisions = this.optimizer.optimize(orderedScenes, clips, profiles);
 
     const totalDuration = decisions.reduce((sum, d) => {
       const scene = scenes.find((s) => s.id === d.sceneId);
       return sum + (scene?.duration || 3);
     }, 0);
-
-    // Cleanup temp keyframes
-    this.keyframeExtractor.cleanupAll();
 
     return {
       clips,

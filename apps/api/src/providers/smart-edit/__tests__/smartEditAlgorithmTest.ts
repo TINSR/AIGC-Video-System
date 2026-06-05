@@ -148,6 +148,12 @@ function printSeparator(title: string) {
   console.log('='.repeat(60));
 }
 
+function assertTest(condition: boolean, message: string): void {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
 function printClipProfiles(profiles: Map<string, ClipProfile>) {
   console.log('\n--- ClipProfile 概览 ---');
   for (const [clipId, p] of profiles) {
@@ -190,6 +196,13 @@ async function testFixtureA() {
   console.log(`  CTA 选择 product_closeup/image: ${checkGoalPreference(decisions, 'cta', ['product_closeup'], profiles) ? 'PASS' : 'WARN'}`);
   console.log(`  所有 score 在 0-100: ${decisions.every((d) => d.score >= 0 && d.score <= 100) ? 'PASS' : 'FAIL'}`);
   console.log(`  所有 decision 有 reasons: ${decisions.every((d) => d.reasons.length > 0) ? 'PASS' : 'FAIL'}`);
+
+  assertTest(decisions.length === FIXTURE_A_SCENES.length, 'Fixture A: decision 数量不完整');
+  assertTest(new Set(clipIds).size === clipIds.length, 'Fixture A: 素材充足时不应复用 clip');
+  assertTest(checkGoalPreference(decisions, 'hook', ['usage_scene', 'lifestyle'], profiles), 'Fixture A: Hook 选镜不符合预期');
+  assertTest(checkGoalPreference(decisions, 'cta', ['product_closeup'], profiles), 'Fixture A: CTA 选镜不符合预期');
+  assertTest(decisions.every((d) => d.score >= 0 && d.score <= 100), 'Fixture A: score 超出范围');
+  assertTest(decisions.every((d) => d.reasons.length > 0), 'Fixture A: decision 缺少 reasons');
 }
 
 async function testFixtureB() {
@@ -206,6 +219,17 @@ async function testFixtureB() {
   console.log(`  所有分镜都有 decision: ${decisions.length === FIXTURE_B_SCENES.length ? 'PASS' : 'FAIL'}`);
   console.log(`  不抛异常: PASS`);
   console.log(`  复用时有理由: ${decisions.filter((d) => !d.fallbackUsed).every((d) => d.reasons.length > 0) ? 'PASS' : 'FAIL'}`);
+
+  const seen = new Set<string>();
+  const reused = decisions.filter((decision) => {
+    if (!decision.clip) return false;
+    const isReuse = seen.has(decision.clip.id);
+    seen.add(decision.clip.id);
+    return isReuse;
+  });
+  assertTest(decisions.length === FIXTURE_B_SCENES.length, 'Fixture B: decision 数量不完整');
+  assertTest(reused.length > 0, 'Fixture B: 素材不足时应允许复用');
+  assertTest(reused.every((decision) => decision.reasons.some((reason) => reason.includes('复用'))), 'Fixture B: 复用 decision 缺少理由');
 }
 
 async function testFixtureC() {
@@ -225,6 +249,9 @@ async function testFixtureC() {
   console.log('\n--- 验证 ---');
   console.log(`  所有分镜都有 decision: ${decisions.length === FIXTURE_C_SCENES.length ? 'PASS' : 'FAIL'}`);
   console.log(`  SmartEditPlan 结构兼容: PASS (使用现有 SmartEditDecision)`);
+
+  assertTest(allRuleFallback, 'Fixture C: LLM 失败时未全部使用 rule_fallback');
+  assertTest(decisions.length === FIXTURE_C_SCENES.length, 'Fixture C: decision 数量不完整');
 }
 
 function checkGoalPreference(
