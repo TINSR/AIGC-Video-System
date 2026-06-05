@@ -17,6 +17,32 @@ const items = [
   { key: "/analytics", icon: <BarChartOutlined />, label: "数据看板" },
 ] satisfies NonNullable<MenuProps["items"]>;
 
+// 根据路由获取页面标题
+function getPageTitle(pathname: string): { subtitle: string; title: string } {
+  if (pathname === "/") {
+    return { subtitle: "Commerce video creation", title: "商品视频任务工作台" };
+  }
+  if (pathname.startsWith("/creative-plans/") && pathname.includes("/review")) {
+    return { subtitle: "Creative Plan Review", title: "方案审核与创作模式" };
+  }
+  if (pathname.startsWith("/tasks/")) {
+    return { subtitle: "Task Progress", title: "任务进度与成片预览" };
+  }
+  if (pathname.startsWith("/reference-videos")) {
+    return { subtitle: "Reference Library", title: "参考视频库" };
+  }
+  if (pathname.startsWith("/inspiration-templates")) {
+    return { subtitle: "Inspiration Templates", title: "灵感模板库" };
+  }
+  if (pathname.startsWith("/analytics")) {
+    return { subtitle: "Analytics Dashboard", title: "数据看板" };
+  }
+  if (pathname.startsWith("/products/new")) {
+    return { subtitle: "Create Product", title: "创建商品任务" };
+  }
+  return { subtitle: "AIGC Commerce Video", title: "电商 AIGC 视频创作工作台" };
+}
+
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -25,6 +51,8 @@ export function AppShell() {
       const key = String(item?.key);
       return key === "/" ? location.pathname === "/" : location.pathname.startsWith(key);
     })?.key?.toString() ?? "/";
+
+  const pageTitle = getPageTitle(location.pathname);
 
   return (
     <Layout className="app-shell">
@@ -46,15 +74,15 @@ export function AppShell() {
         <div className="side-status">
           <Tag color="purple">Real API</Tag>
           <Typography.Text type="secondary">
-            方案审核和视频预览从工作台任务卡片进入，避免脱离具体商品上下文。
+            Real API 已启用，任务数据来自真实后端。
           </Typography.Text>
         </div>
       </Layout.Sider>
       <Layout>
         <Layout.Header className="topbar">
           <Space direction="vertical" size={0}>
-            <Typography.Text type="secondary">AIGC 带货视频生成系统</Typography.Text>
-            <Typography.Title level={4}>生成前审核，把黑盒变成可控创作流</Typography.Title>
+            <Typography.Text type="secondary">{pageTitle.subtitle}</Typography.Text>
+            <Typography.Title level={4}>{pageTitle.title}</Typography.Title>
           </Space>
           <Button type="primary" icon={<FolderAddOutlined />} onClick={() => navigate("/products/new")}>
             新建商品任务
