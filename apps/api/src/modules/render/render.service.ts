@@ -848,7 +848,16 @@ export class RenderService {
     task.updatedAt = new Date().toISOString();
     await syncTask(task);
 
-    this.executeRenderTask(task, creativePlan, materials).catch(async (error) => {
+    const retryPromise =
+      task.renderMode === 'smart_clip_edit'
+        ? this.executeSmartClipRenderTask(task, creativePlan, materials, {
+            withSubtitle: true,
+            withTts: false,
+            withBgm: false,
+          })
+        : this.executeRenderTask(task, creativePlan, materials);
+
+    retryPromise.catch(async (error) => {
       console.error('重试任务失败:', error);
       task.status = 'failed';
       task.errorMessage = error instanceof Error ? error.message : '重试异常';

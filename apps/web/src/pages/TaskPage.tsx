@@ -11,6 +11,7 @@ const fallbackDisabledMessage = "当前为生产严格模式，FFmpeg fallback �
 
 const providerCopy: Record<GenerationTask["provider"], { text: string; color: string; alertType: "success" | "warning" }> = {
   seedance_1_5: { text: "Seedance 真实生成", color: "green", alertType: "success" },
+  smart_clip_edit: { text: "智能剪辑 Smart Clip Editing", color: "blue", alertType: "success" },
   ffmpeg_fallback: { text: "FFmpeg 演示兜底", color: "gold", alertType: "warning" }
 };
 
