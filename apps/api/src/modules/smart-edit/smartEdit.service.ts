@@ -129,7 +129,7 @@ export class SmartEditService {
     return {
       creativePlanId,
       decisions: decisionsWithOverrides.map((decision) => {
-        const scene = plan.scenes.find((item) => item.id === decision.sceneId);
+        const scene = scenesWithDuration.find((item) => item.id === decision.sceneId);
         return {
           ...decision,
           sceneSubtitle: scene?.subtitle,
@@ -155,15 +155,16 @@ export class SmartEditService {
     for (const override of overrides) {
       const scene = sceneById.get(override.sceneId);
       const clip = clipById.get(override.clipId);
-      if (!scene || !clip) {
-        throw new Error('SMART_EDIT_OVERRIDE_NOT_FOUND');
-      }
+        if (!scene || !clip) {
+          throw new Error('SMART_EDIT_OVERRIDE_NOT_FOUND');
+        }
 
-      const sceneDuration = sceneDurations[scene.id] ?? scene.duration;
-      const sceneWithDuration = { ...scene, duration: sceneDuration };
-      await prisma.sceneClipMatch.deleteMany({
-        where: { creativePlanId, sceneId: scene.id },
-      });
+        const sceneDuration = sceneDurations[scene.id] ?? scene.duration;
+        const sceneWithDuration = { ...scene, duration: sceneDuration };
+
+        await prisma.sceneClipMatch.deleteMany({
+          where: { creativePlanId, sceneId: scene.id },
+        });
       await prisma.sceneClipMatch.create({
         data: {
           id: randomUUID(),

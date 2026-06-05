@@ -439,8 +439,9 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
             );
             fs.unlinkSync(tempOutput);
             clipFiles.push(subtitledOutput);
-          } catch {
-            if (fs.existsSync(subtitledOutput)) {
+            } catch {
+              // 字幕烧录失败时，回退到未烧字幕的视频片段，避免整任务失败
+              if (fs.existsSync(subtitledOutput)) {
               fs.unlinkSync(subtitledOutput);
             }
             clipFiles.push(tempOutput);
