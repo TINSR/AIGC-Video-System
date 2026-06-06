@@ -1,4 +1,14 @@
-import { ArrowRightOutlined, PlusOutlined, VideoCameraOutlined, ScissorOutlined, DeleteOutlined, MoreOutlined } from "@ant-design/icons";
+import {
+  ArrowRightOutlined,
+  BarChartOutlined,
+  BulbOutlined,
+  DeleteOutlined,
+  FolderAddOutlined,
+  NodeIndexOutlined,
+  PlusOutlined,
+  ScissorOutlined,
+  VideoCameraOutlined
+} from "@ant-design/icons";
 import { Alert, Button, Col, Dropdown, Empty, Modal, Row, Space, Spin, Table, Tag, Tooltip, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -7,6 +17,15 @@ import { api, type WorkspaceTaskSummary } from "../services/api";
 
 type PlanMap = Record<string, Array<CreativePlan | WorkspaceCreativePlanSummary>>;
 type MaterialMap = Record<string, Material[]>;
+
+const workflowSteps = [
+  { title: "商品建档", desc: "录入商品卖点、目标人群和商家诉求", icon: <FolderAddOutlined /> },
+  { title: "素材理解", desc: "识别主图、场景图与视频片段素材角色", icon: <VideoCameraOutlined /> },
+  { title: "灵感模板", desc: "从参考视频归纳痛点转化、场景种草等模板", icon: <BulbOutlined /> },
+  { title: "CreativePlan", desc: "生成脚本、分镜、视觉规范和 Seedance Prompt", icon: <NodeIndexOutlined /> },
+  { title: "双模式成片", desc: "Seedance 整片生成或真实素材智能剪辑", icon: <ScissorOutlined /> },
+  { title: "数据回流", desc: "播放、点击、转化表现反哺模板推荐", icon: <BarChartOutlined /> }
+];
 
 function taskStatusColor(status: GenerationTask["status"]) {
   if (status === "success") return "green";
@@ -199,6 +218,31 @@ export function DashboardPage() {
             <img src="https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=400&q=80" alt="drink material" />
             <img src="https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" alt="scene material" />
           </div>
+        </div>
+      </section>
+
+      <section className="surface home-workflow-strip">
+        <div className="section-heading">
+          <div>
+            <Typography.Text type="secondary">End-to-End Workflow</Typography.Text>
+            <Typography.Title level={3}>完整工作流</Typography.Title>
+          </div>
+        </div>
+        <div className="workflow-strip-grid">
+          {workflowSteps.map((step, index) => (
+            <div className="workflow-strip-step" key={step.title}>
+              <Space align="start" size={10}>
+                <span className="workflow-strip-icon">{step.icon}</span>
+                <Space direction="vertical" size={4}>
+                  <Space size={6}>
+                    <Tag color="blue">{index + 1}</Tag>
+                    <Typography.Text strong>{step.title}</Typography.Text>
+                  </Space>
+                  <Typography.Text type="secondary">{step.desc}</Typography.Text>
+                </Space>
+              </Space>
+            </div>
+          ))}
         </div>
       </section>
 
