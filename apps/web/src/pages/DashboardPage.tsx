@@ -41,7 +41,6 @@ export function DashboardPage() {
   const [plansByProduct, setPlansByProduct] = useState<PlanMap>({});
   const [materialsByProduct, setMaterialsByProduct] = useState<MaterialMap>({});
   const [workspaceSummaries, setWorkspaceSummaries] = useState<WorkspaceTaskSummary[]>();
-  const [workspaceSource, setWorkspaceSource] = useState<"aggregate" | "fallback">("fallback");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
@@ -80,12 +79,10 @@ export function DashboardPage() {
             ])
           )
         );
-        setWorkspaceSource("aggregate");
         setError(undefined);
         return;
       } catch {
         if (!alive) return;
-        setWorkspaceSource("fallback");
       }
 
       const [nextProducts, nextTasks] = await Promise.all([api.getProducts(), api.getTasks()]);
@@ -196,7 +193,7 @@ export function DashboardPage() {
             <Tag>方案审核</Tag>
             <Tag>任务恢复</Tag>
           </div>
-          <div className="prompt-input">Product → CreativePlan → RenderTask 都从真实 API 恢复，不再依赖刷新前的页面状态。</div>
+          <div className="prompt-input">从商品素材到创意方案，再到视频成片，全流程集中管理。</div>
           <div className="console-strip">
             <img src="https://images.unsplash.com/photo-1589733955941-5eeaf752f6dd?auto=format&fit=crop&w=400&q=80" alt="product material" />
             <img src="https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=400&q=80" alt="drink material" />
@@ -206,19 +203,9 @@ export function DashboardPage() {
       </section>
 
       {error ? <Alert type="error" showIcon message={error} /> : null}
-      <Alert
-        type={workspaceSource === "aggregate" ? "success" : "info"}
-        showIcon
-        message={
-          workspaceSource === "aggregate"
-            ? "工作台已使用聚合 API 加载，避免按商品逐个请求素材和方案。"
-            : "工作台聚合 API 暂不可用，已自动回退到现有真实 API 请求。"
-        }
-      />
-
       {products.length === 0 ? (
         <div className="surface">
-          <Empty description="暂无商品任务，创建商品后会在这里恢复素材、方案和渲染进度。" />
+          <Empty description="暂无商品任务，创建商品后即可开始视频创作。" />
         </div>
       ) : (
         <Row gutter={[20, 20]}>

@@ -15,7 +15,7 @@ export function ProductNewPage() {
           <Typography.Text type="secondary">Step 1</Typography.Text>
           <Typography.Title level={2}>创建商品</Typography.Title>
           <Typography.Paragraph>
-            填写标题、类目、卖点、人群和使用场景，字段与 POST /api/products 对齐。
+            填写商品信息和核心卖点，创建后即可上传素材并生成视频方案。
           </Typography.Paragraph>
         </div>
       </section>
@@ -28,7 +28,7 @@ export function ProductNewPage() {
             message.success("商品已保存");
             navigate(`/products/${product.id}/materials`);
           } catch (err) {
-            message.error(err instanceof Error ? err.message : "商品保存失败，请检查真实 API 是否可用");
+            message.error(err instanceof Error ? err.message : "商品保存失败，请稍后重试");
           } finally {
             setSubmitting(false);
           }

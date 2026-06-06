@@ -103,7 +103,7 @@ export function MaterialsPage() {
       />
       {productMaterials.length === 0 ? (
         <div className="surface">
-          <Empty description="暂无素材，仍可继续生成 demo CreativePlan。" />
+          <Empty description="暂无素材，请先上传商品图片或视频。" />
         </div>
       ) : (
         <Row gutter={[20, 20]}>

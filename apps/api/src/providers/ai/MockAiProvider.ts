@@ -17,16 +17,60 @@ export class MockAiProvider implements AiProvider {
   }
 
   async regenerateScene(input: SceneRegenerateInput): Promise<SceneDraft> {
-    const { existingScene, modifyRequest } = input;
+    const { product, existingScene, creativePlan } = input;
+    const sellingPoint = product.sellingPoints[Math.max(0, existingScene.order - 1) % Math.max(product.sellingPoints.length, 1)]
+      || product.sellingPoints[0]
+      || '核心卖点';
+    const goal = existingScene.goal || (existingScene.order === creativePlan.scenes.length ? 'cta' : 'feature');
+    const copyByGoal: Record<string, { subtitle: string; voiceover: string; visualDescription: string }> = {
+      hook: {
+        subtitle: `${product.usageScene}还在为这个问题烦恼？`,
+        voiceover: `在${product.usageScene}时，你是不是也遇到过这样的麻烦？`,
+        visualDescription: `${product.targetAudience}在${product.usageScene}中遇到典型痛点，镜头快速推进并自然带出${product.title}`,
+      },
+      proof: {
+        subtitle: `${sellingPoint}，效果看得见`,
+        voiceover: `实际体验下来，${sellingPoint}，使用效果直观又省心。`,
+        visualDescription: `通过使用前后或细节对比展示${product.title}，重点证明“${sellingPoint}”`,
+      },
+      cta: {
+        subtitle: `现在入手${product.title}`,
+        voiceover: `想轻松解决这个问题，现在就试试${product.title}。`,
+        visualDescription: `${product.title}居中展示，保持商品外观清晰一致，最后出现简洁购买引导`,
+      },
+      feature: {
+        subtitle: sellingPoint,
+        voiceover: `${product.title}主打${sellingPoint}，日常使用更轻松。`,
+        visualDescription: `${product.title}功能演示与细节特写，清楚呈现“${sellingPoint}”的使用过程`,
+      },
+      full_demo: {
+        subtitle: `${product.title}使用演示`,
+        voiceover: `从准备到完成，${product.title}操作简单，${sellingPoint}。`,
+        visualDescription: `完整演示${product.title}的使用步骤，镜头连贯，突出“${sellingPoint}”`,
+      },
+    };
+    const regenerated = copyByGoal[goal] || copyByGoal.feature;
 
     return {
       order: existingScene.order,
       duration: existingScene.duration,
-      visualDescription: modifyRequest ? `${existingScene.visualDescription} - ${modifyRequest}` : existingScene.visualDescription,
-      subtitle: existingScene.subtitle,
-      voiceover: existingScene.voiceover,
-      seedancePrompt: modifyRequest ? `${existingScene.seedancePrompt}, ${modifyRequest}` : existingScene.seedancePrompt,
+      goal: existingScene.goal,
+      visualDescription: regenerated.visualDescription,
+      subtitle: regenerated.subtitle,
+      voiceover: regenerated.voiceover,
+      seedancePrompt: [
+        `商品：${product.title}`,
+        creativePlan.visualBible.productAppearance
+          ? `商品外观：${creativePlan.visualBible.productAppearance}`
+          : '',
+        regenerated.visualDescription,
+        `字幕：${regenerated.subtitle}`,
+        `旁白：${regenerated.voiceover}`,
+        `${creativePlan.visualBible.style}，${creativePlan.visualBible.colorTone}，${creativePlan.visualBible.lighting}`,
+        '9:16竖屏，保持商品颜色、形状和标识一致',
+      ].filter(Boolean).join('；'),
       materialId: existingScene.materialId,
+      materialUsage: existingScene.materialUsage,
       warnings: [],
       transition: existingScene.transition,
     };

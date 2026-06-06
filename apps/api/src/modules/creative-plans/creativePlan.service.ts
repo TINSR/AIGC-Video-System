@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { MockAiProvider } from '../../providers/ai/MockAiProvider';
+import { RealLLMProvider } from '../../providers/ai/RealLLMProvider';
 import { CreativePlanPipeline } from './CreativePlanPipeline';
 import { ComplianceAgent } from '../../agents/ComplianceAgent';
 import { ContinuityAgent } from '../../agents/ContinuityAgent';
@@ -120,12 +121,14 @@ function mapCreativePlanFromDb(dbPlan: {
 
 export class CreativePlanService {
   private mockAiProvider: MockAiProvider;
+  private sceneAiProvider: RealLLMProvider;
   private pipeline: CreativePlanPipeline;
   private complianceAgent: ComplianceAgent;
   private continuityAgent: ContinuityAgent;
 
   constructor() {
     this.mockAiProvider = new MockAiProvider();
+    this.sceneAiProvider = new RealLLMProvider();
     this.pipeline = new CreativePlanPipeline();
     this.complianceAgent = new ComplianceAgent();
     this.continuityAgent = new ContinuityAgent();
@@ -235,9 +238,9 @@ export class CreativePlanService {
       throw new Error('分镜不存在');
     }
 
-    const product = this.buildProductStub(creativePlan.productId);
+    const product = await this.getProductForGeneration(creativePlan.productId);
 
-    const sceneDraft = await this.mockAiProvider.regenerateScene({
+    const sceneDraft = await this.sceneAiProvider.regenerateScene({
       product,
       materials,
       existingScene,
@@ -261,12 +264,34 @@ export class CreativePlanService {
     const { complianceWarnings } = await this.complianceAgent.check(tempPlan);
     const { continuityWarnings } = await this.continuityAgent.check(tempPlan, materials);
 
-    return {
+    const regeneratedScene: Scene = {
       ...sceneDraft,
-      id: sceneId, // 保留原 sceneId，前端后续操作不失效
+      id: sceneId,
       creativePlanId: creativePlan.id,
       warnings: [...complianceWarnings.map(w => w.message), ...continuityWarnings.map(w => w.message)],
     };
+
+    try {
+      await prisma.scene.update({
+        where: { id: sceneId },
+        data: {
+          visualDescription: regeneratedScene.visualDescription,
+          subtitle: regeneratedScene.subtitle,
+          voiceover: regeneratedScene.voiceover,
+          seedancePrompt: regeneratedScene.seedancePrompt,
+          warnings: regeneratedScene.warnings,
+          materialId: regeneratedScene.materialId ?? null,
+          materialUsage: regeneratedScene.materialUsage ?? null,
+        },
+      });
+    } catch (error) {
+      console.warn(
+        '[CreativePlanService] persist regenerated scene failed:',
+        error instanceof Error ? error.message : error
+      );
+    }
+
+    return regeneratedScene;
   }
 
   // 获取创意方案详情
@@ -569,5 +594,28 @@ export class CreativePlanService {
       usageScene: '日常使用',
       createdAt: new Date().toISOString(),
     };
+  }
+
+  private async getProductForGeneration(productId: string): Promise<Product> {
+    try {
+      const product = await prisma.product.findUnique({ where: { id: productId } });
+      if (product) {
+        return {
+          id: product.id,
+          title: product.title,
+          category: product.category,
+          sellingPoints: JSON.parse(product.sellingPoints) as string[],
+          targetAudience: product.targetAudience,
+          usageScene: product.usageScene,
+          createdAt: product.createdAt.toISOString(),
+        };
+      }
+    } catch (error) {
+      console.warn(
+        '[CreativePlanService] load product for scene regeneration failed:',
+        error instanceof Error ? error.message : error
+      );
+    }
+    return this.buildProductStub(productId);
   }
 }

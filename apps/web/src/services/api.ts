@@ -896,7 +896,7 @@ export const api = {
     if (!USE_MOCK) {
       return request<Scene>(`/creative-plans/${planId}/scenes/${sceneId}/regenerate`, {
         method: "POST",
-        body: JSON.stringify({ modifyRequest: "Regenerate scene copy and Seedance prompt." })
+        body: JSON.stringify({})
       });
     }
     await wait(500);
@@ -904,9 +904,10 @@ export const api = {
     const scene = plan.scenes.find((item) => item.id === sceneId) ?? plan.scenes[0];
     const updated = {
       ...scene,
-      subtitle: `${scene.subtitle} / 已优化`,
-      voiceover: `${scene.voiceover} 现在突出一个更清晰的购买理由。`,
-      seedancePrompt: `${scene.seedancePrompt}, refreshed ecommerce short-video copy, clearer product focus`
+      visualDescription: "重新设计的商品使用画面，镜头突出核心功能与实际使用效果",
+      subtitle: "核心卖点，一眼看懂",
+      voiceover: "换个角度看，这个功能让日常使用更轻松。",
+      seedancePrompt: "商品功能演示，清楚展示核心卖点，真实使用场景，明亮自然光线，镜头稳定，9:16竖屏"
     };
     plan.scenes = plan.scenes.map((item) => (item.id === sceneId ? updated : item));
     return updated;

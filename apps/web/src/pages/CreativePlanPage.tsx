@@ -115,7 +115,7 @@ export function CreativePlanPage() {
           type="info"
           showIcon
           message="已选择参考视频"
-          description={`生成时将注入 referenceVideoId=${referenceVideoId} 的结构化拆解结果。`}
+          description="生成方案时将参考该视频的节奏、结构和表达方式。"
         />
       ) : null}
       {selectedTemplateId ? (
@@ -123,7 +123,7 @@ export function CreativePlanPage() {
           type="info"
           showIcon
           message="已选择灵感模板"
-          description={`生成时将注入 templateId=${selectedTemplateId} 的模板策略、Hook、风格和分镜结构。`}
+          description="生成方案时将采用该模板的创意策略、风格和分镜结构。"
         />
       ) : null}
       <InspirationTemplateRecommendationPanel

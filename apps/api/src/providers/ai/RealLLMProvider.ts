@@ -40,6 +40,13 @@ interface LLMOutput {
   scenes: LLMSceneDraft[];
 }
 
+interface LLMSceneRegeneration {
+  visualDescription: string;
+  subtitle: string;
+  voiceover: string;
+  seedancePrompt: string;
+}
+
 type LLMUserContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
@@ -109,7 +116,133 @@ export class RealLLMProvider implements AiProvider {
   }
 
   async regenerateScene(input: SceneRegenerateInput): Promise<SceneDraft> {
-    return this.fallback.regenerateScene(input);
+    if (!this.config) {
+      return this.fallback.regenerateScene(input);
+    }
+
+    try {
+      const regenerated = await this.callSceneRegeneration(input);
+      return {
+        order: input.existingScene.order,
+        duration: input.existingScene.duration,
+        goal: input.existingScene.goal,
+        visualDescription: regenerated.visualDescription,
+        subtitle: regenerated.subtitle,
+        voiceover: regenerated.voiceover,
+        seedancePrompt: regenerated.seedancePrompt,
+        materialId: input.existingScene.materialId,
+        materialUsage: input.existingScene.materialUsage,
+        warnings: [],
+        transition: input.existingScene.transition,
+      };
+    } catch (error) {
+      console.warn(
+        '[RealLLMProvider] scene regeneration failed, using rule fallback:',
+        error instanceof Error ? error.message : error
+      );
+      return this.fallback.regenerateScene(input);
+    }
+  }
+
+  private async callSceneRegeneration(input: SceneRegenerateInput): Promise<LLMSceneRegeneration> {
+    const config = this.config;
+    if (!config) {
+      throw new Error('LLM provider is not configured');
+    }
+
+    const { product, materials, creativePlan, existingScene, modifyRequest } = input;
+    const systemPrompt = `你是电商短视频分镜编剧。请重新创作已有分镜的文案和 Seedance 提示词。
+必须返回严格 JSON，不要返回 Markdown 或额外说明：
+{
+  "visualDescription": "新的画面描述",
+  "subtitle": "新的短字幕",
+  "voiceover": "新的自然口播",
+  "seedancePrompt": "可直接用于视频生成的完整中文提示词"
+}
+不要把用户指令原文拼接进结果。保留原分镜目标、时长和转场，只重写内容。
+不得编造商品不存在的功效、价格或认证。
+seedancePrompt 必须包含商品外观约束、画面动作、镜头、光线和 9:16 竖屏要求。`;
+    const userPrompt = `商品：${product.title}
+类目：${product.category}
+目标用户：${product.targetAudience}
+使用场景：${product.usageScene}
+核心卖点：${product.sellingPoints.join('、')}
+
+全局视觉设定：
+- 风格：${creativePlan.visualBible.style}
+- 色调：${creativePlan.visualBible.colorTone}
+- 光线：${creativePlan.visualBible.lighting}
+- 镜头：${creativePlan.visualBible.cameraStyle}
+- 商品外观：${creativePlan.visualBible.productAppearance}
+- 连贯规则：${creativePlan.visualBible.continuityRules.join('；')}
+
+当前分镜：
+- 序号：${existingScene.order}
+- 目标：${existingScene.goal || 'feature'}
+- 时长：${existingScene.duration} 秒
+- 原画面：${existingScene.visualDescription}
+- 原字幕：${existingScene.subtitle}
+- 原旁白：${existingScene.voiceover}
+${modifyRequest?.trim() ? `- 额外创作要求：${modifyRequest.trim()}` : ''}
+
+请给出一套明显不同、但仍符合商品事实与全局视觉设定的新分镜内容。`;
+    const userContent = this.buildUserContent(userPrompt, materials);
+    const controller = new AbortController();
+    const timeoutMs = Math.max(Number(process.env.REAL_LLM_TIMEOUT_MS) || 30_000, 1000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const doubaoOptions = config.provider === 'volcengine-doubao'
+      ? { reasoning_effort: process.env.REAL_LLM_REASONING_EFFORT || 'minimal' }
+      : {};
+
+    let response: Response;
+    try {
+      response = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent },
+          ],
+          temperature: 0.85,
+          max_tokens: Math.max(Number(process.env.REAL_LLM_MAX_TOKENS) || 2048, 512),
+          response_format: { type: 'json_object' },
+          ...doubaoOptions,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`LLM API ${response.status}: ${text.slice(0, 200)}`);
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+    const content = this.extractContent(data);
+    if (!content) throw new Error('LLM response has no content');
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new Error('LLM scene output is not valid JSON');
+    }
+    if (!parsed || typeof parsed !== 'object') throw new Error('LLM scene output is not an object');
+
+    const result = parsed as Record<string, unknown>;
+    for (const field of ['visualDescription', 'subtitle', 'voiceover', 'seedancePrompt'] as const) {
+      if (typeof result[field] !== 'string' || result[field].trim().length === 0) {
+        throw new Error(`LLM scene output missing ${field}`);
+      }
+    }
+    return result as unknown as LLMSceneRegeneration;
   }
 
   private async callLLM(input: CreativePlanInput): Promise<LLMOutput> {

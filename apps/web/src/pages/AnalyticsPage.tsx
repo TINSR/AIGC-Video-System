@@ -63,7 +63,6 @@ export function AnalyticsPage() {
   const [platform, setPlatform] = useState<CommerceMetricsPlatform | undefined>();
   const [days, setDays] = useState<RangeDays>(7);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
   const [compareLoading, setCompareLoading] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -114,34 +113,6 @@ export function AnalyticsPage() {
     [overview]
   );
 
-  const handleSeed = async () => {
-    setActionLoading(true);
-    try {
-      await api.seedMockMetrics();
-      message.success("演示指标已初始化");
-      await loadData();
-    } catch (err) {
-      message.warning(err instanceof Error ? err.message : "初始化演示数据失败");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleReset = async () => {
-    setActionLoading(true);
-    try {
-      await api.resetMockMetrics();
-      setComparison(undefined);
-      setSelectedTemplateIds([]);
-      message.success("演示指标已重置");
-      await loadData();
-    } catch (err) {
-      message.warning(err instanceof Error ? err.message : "重置演示数据失败");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const handleImport = async (file: File) => {
     setImportLoading(true);
     setImportError(undefined);
@@ -175,7 +146,7 @@ export function AnalyticsPage() {
     <Space direction="vertical" size={20} className="full-width">
       <section className="section-heading">
         <div>
-          <Typography.Text type="secondary">Day14 Analytics Feedback</Typography.Text>
+          <Typography.Text type="secondary">Performance Analytics</Typography.Text>
           <Typography.Title level={2}>模板效果看板</Typography.Title>
         </div>
         <Space wrap>
@@ -186,9 +157,8 @@ export function AnalyticsPage() {
             style={{ width: 180 }}
             onChange={(value) => setPlatform(value)}
             options={[
-              { value: "mock", label: "mock" },
-              { value: "douyin_shop", label: "douyin_shop" },
-              { value: "tiktok_shop", label: "tiktok_shop" }
+              { value: "douyin_shop", label: "抖音小店" },
+              { value: "tiktok_shop", label: "TikTok Shop" }
             ]}
           />
           <Segmented
@@ -199,12 +169,6 @@ export function AnalyticsPage() {
               { label: "最近 30 天", value: 30 }
             ]}
           />
-          <Button loading={actionLoading} onClick={handleSeed}>
-            初始化演示数据
-          </Button>
-          <Button loading={actionLoading} onClick={handleReset}>
-            重置演示数据
-          </Button>
           <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
             导入 CSV
           </Button>
@@ -256,7 +220,7 @@ export function AnalyticsPage() {
             }}
           />
         ) : (
-          <Empty description="暂无趋势数据，可初始化演示数据或导入 CSV。" />
+          <Empty description="暂无趋势数据，可导入 CSV 后查看。" />
         )}
       </div>
       <Row gutter={[16, 16]}>

@@ -204,8 +204,8 @@ export function SceneTimelinePanel({
                 <Tooltip
                   title={
                     scenePreviewAvailable
-                      ? "生成当前分镜的短预览，不影响整片 render。"
-                      : "分镜预览开发中，等待后端提供 POST /api/creative-plans/:id/scenes/:sceneId/render。"
+                      ? "生成当前分镜的短预览，不影响整片生成。"
+                      : "当前暂不支持分镜预览。"
                   }
                 >
                   <Button

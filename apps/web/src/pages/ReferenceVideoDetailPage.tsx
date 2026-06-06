@@ -88,12 +88,6 @@ export function ReferenceVideoDetailPage() {
         <>
           <div className="surface">
             <Space direction="vertical" size={12} className="full-width">
-              <Alert
-                type="info"
-                showIcon
-                message="用作剧本参考只会传递 referenceVideoId 到具体商品流程，不创建全局状态。"
-                description="当前页面不会复制原视频字幕全文，也不会提供混剪原视频入口。"
-              />
               <Space wrap>
                 <Select
                   placeholder="选择商品"

@@ -6,7 +6,7 @@ import {
   ScissorOutlined,
   VideoCameraOutlined,
 } from "@ant-design/icons";
-import { Button, Layout, Menu, Space, Tag, Typography } from "antd";
+import { Button, Layout, Menu, Space, Typography } from "antd";
 import type { MenuProps } from "antd";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -76,12 +76,6 @@ export function AppShell() {
           onClick={({ key }) => navigate(key)}
           className="nav-menu"
         />
-        <div className="side-status">
-          <Tag color="purple">Real API</Tag>
-          <Typography.Text type="secondary">
-            Real API 已启用，任务数据来自真实后端。
-          </Typography.Text>
-        </div>
       </Layout.Sider>
       <Layout>
         <Layout.Header className="topbar">

@@ -74,12 +74,6 @@ export function InspirationTemplateDetailPage() {
         <>
           <div className="surface">
             <Space direction="vertical" size={12} className="full-width">
-              <Alert
-                type="info"
-                showIcon
-                message="使用此模板生成剧本会把 templateId 带入具体商品 CreativePlan 流程。"
-                description="referenceVideoId 能力保留；模板不会把参考视频原片混剪进商品成片。"
-              />
               <Space wrap>
                 <Select
                   placeholder="选择商品"

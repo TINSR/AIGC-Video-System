@@ -162,7 +162,7 @@ export function ReferenceVideoImportForm({ onCreated, mode }: Props) {
           <InboxOutlined />
         </p>
         <p className="ant-upload-text">选择或拖拽商家自有视频</p>
-        <p className="ant-upload-hint">仅用于结构化分析，不提供混剪原视频入口。</p>
+        <p className="ant-upload-hint">支持常见视频格式，上传后可进行内容分析。</p>
       </Upload.Dragger>
     </Form>
   );
@@ -176,8 +176,8 @@ export function ReferenceVideoImportForm({ onCreated, mode }: Props) {
           <Alert
             type="info"
             showIcon
-            message="仅保存结构化分析结果，不复刻、不混剪参考视频。"
-            description="请输入可直接访问的视频文件 URL。平台页面链接暂不支持自动解析。"
+            message="请输入可直接访问的视频文件 URL"
+            description="暂不支持抖音等平台页面链接。"
           />
           {urlFormContent}
         </Space>
@@ -190,12 +190,6 @@ export function ReferenceVideoImportForm({ onCreated, mode }: Props) {
       <div className="surface">
         {contextHolder}
         <Space direction="vertical" size={16} className="full-width">
-          <Alert
-            type="info"
-            showIcon
-            message="仅保存结构化分析结果，不复刻、不混剪参考视频。"
-            description="上传商家自有视频进行结构化分析。"
-          />
           {uploadFormContent}
         </Space>
       </div>
@@ -210,8 +204,8 @@ export function ReferenceVideoImportForm({ onCreated, mode }: Props) {
         <Alert
           type="info"
           showIcon
-          message="仅保存结构化分析结果，不复刻、不混剪参考视频。"
-          description="请输入可直接访问的视频文件 URL。平台页面链接暂不支持自动解析。"
+          message="导入参考视频"
+          description="可使用公开视频文件 URL，或上传商家自有视频。"
         />
         <Tabs
           items={[

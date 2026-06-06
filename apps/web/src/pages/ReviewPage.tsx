@@ -56,10 +56,7 @@ export function ReviewPage() {
       {plan.templateId ? (
         <div className="surface">
           <Space direction="vertical" size={12} className="full-width">
-            <Space wrap>
-              <Tag color="purple">templateId</Tag>
-              <Typography.Text>{plan.templateId}</Typography.Text>
-            </Space>
+            <Tag color="purple">已应用灵感模板</Tag>
             {templateTrace.length > 0 ? (
               <List
                 size="small"
@@ -73,9 +70,7 @@ export function ReviewPage() {
                   </List.Item>
                 )}
               />
-            ) : (
-              <Alert type="info" showIcon message="当前方案记录了 templateId，等待后端 agentTrace 返回 TemplateInspiration。" />
-            )}
+            ) : null}
           </Space>
         </div>
       ) : null}

@@ -24,7 +24,7 @@ const traceStatusColor: Record<AgentTrace["status"], string> = {
 };
 
 function listText(values?: string[]) {
-  return values?.length ? values.join(" / ") : "等待后端策略字段返回";
+  return values?.length ? values.join(" / ") : "暂无";
 }
 
 function inferStrategy(plan: CreativePlan, productName: string): CreativeStrategy {
@@ -63,7 +63,6 @@ export function StrategyReviewPanel({ plan, productName }: Props) {
   const strategy = inferStrategy(plan, productName);
   const traces = buildTrace(plan);
   const stage = plan.stage ?? (plan.status === "approved" ? "approved" : "storyboard_review");
-  const hasRealAgentTrace = Boolean(plan.agentTrace?.length || plan.creativeStrategy?.agentTrace?.length);
 
   return (
     <section className="surface strategy-review">
@@ -74,21 +73,8 @@ export function StrategyReviewPanel({ plan, productName }: Props) {
         </div>
         <Space wrap>
           <Tag color="blue">{stageLabels[stage] ?? stage}</Tag>
-          <Tag color={plan.renderMode === "scene_clips" ? "purple" : "cyan"}>
-            renderMode: {plan.renderMode ?? "full_video"}
-          </Tag>
         </Space>
       </div>
-
-      <Alert
-        type="info"
-        showIcon
-        message={
-          hasRealAgentTrace
-            ? "已展示后端返回的 Agent 摘要；页面只展示 summary 和 warnings，不展示原始 prompt、模型内部推理或密钥。"
-            : "暂无真实 agentTrace，当前使用 CreativePlan 字段推导摘要；页面不会展示原始 prompt 或模型内部推理。"
-        }
-      />
 
       <Descriptions column={{ xs: 1, md: 2 }} size="small" className="strategy-descriptions">
         <Descriptions.Item label="视频目标">{strategy.videoGoal}</Descriptions.Item>
@@ -96,7 +82,7 @@ export function StrategyReviewPanel({ plan, productName }: Props) {
         <Descriptions.Item label="卖点顺序">{listText(strategy.sellingPointOrder)}</Descriptions.Item>
         <Descriptions.Item label="情绪节奏">{strategy.emotionalArc}</Descriptions.Item>
         <Descriptions.Item label="风格方向">{strategy.styleDirection}</Descriptions.Item>
-        <Descriptions.Item label="推荐分镜数">{strategy.recommendedSceneCount ?? "等待后端返回"}</Descriptions.Item>
+        <Descriptions.Item label="推荐分镜数">{strategy.recommendedSceneCount ?? "暂无"}</Descriptions.Item>
       </Descriptions>
 
       {strategy.warnings?.length ? (
@@ -132,7 +118,7 @@ export function StrategyReviewPanel({ plan, productName }: Props) {
             }))}
           />
         ) : (
-          <Empty description="暂无 Agent 摘要，等待后端 agentTrace 字段返回。" />
+          <Empty description="暂无创作过程摘要" />
         )}
       </div>
     </section>
