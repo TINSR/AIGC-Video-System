@@ -895,8 +895,7 @@ export const api = {
   async regenerateScene(planId: string, sceneId: string): Promise<Scene> {
     if (!USE_MOCK) {
       return request<Scene>(`/creative-plans/${planId}/scenes/${sceneId}/regenerate`, {
-        method: "POST",
-        body: JSON.stringify({ modifyRequest: "Regenerate scene copy and Seedance prompt." })
+        method: "POST"
       });
     }
     await wait(500);

@@ -210,6 +210,37 @@ textarea {
   border-radius: 8px;
 }
 
+.home-workflow-strip {
+  display: grid;
+  gap: 16px;
+}
+
+.workflow-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.workflow-strip-step {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(8, 9, 16, 0.42);
+}
+
+.workflow-strip-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(55, 213, 255, 0.12);
+  color: #37d5ff;
+  font-size: 16px;
+}
+
 .product-card,
 .material-card,
 .scene-card,
@@ -614,6 +645,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .workflow-strip-grid {
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+  }
+
   .template-grid {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
@@ -653,6 +688,7 @@ textarea {
   }
 
   .template-grid,
+  .workflow-strip-grid,
   .template-card-grid,
   .scene-card {
     grid-template-columns: 1fr;
