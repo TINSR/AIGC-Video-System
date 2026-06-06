@@ -5,7 +5,10 @@ import type { ITtsProvider, TtsResult } from './ITtsProvider';
 
 function getProviderConfig() {
   const apiKey = process.env.MIMO_API_KEY || '';
-  const baseUrl = (process.env.MIMO_TTS_BASE_URL || 'https://api.xiaomimimo.com/v1').replace(/\/$/, '');
+  const defaultBaseUrl = apiKey.startsWith('tp-')
+    ? 'https://token-plan-cn.xiaomimimo.com/v1'
+    : 'https://api.xiaomimimo.com/v1';
+  const baseUrl = (process.env.MIMO_TTS_BASE_URL || defaultBaseUrl).replace(/\/$/, '');
   const model = process.env.MIMO_TTS_MODEL || 'mimo-v2.5-tts';
   const voice = process.env.TTS_VOICE || '冰糖';
   const stylePrompt = process.env.MIMO_TTS_STYLE_PROMPT || '使用自然、亲切、有活力的中文电商短视频口播风格，语速稍快，商品卖点适当重读。';
