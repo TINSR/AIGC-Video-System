@@ -103,6 +103,15 @@ export const deleteProduct = async (req: Request, res: Response) => {
     }
     res.json({ success: true });
   } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && (error as any).code === 'PRODUCT_HAS_ACTIVE_TASKS') {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'PRODUCT_HAS_ACTIVE_TASKS',
+          message: error.message,
+        },
+      });
+    }
     res.status(500).json({
       success: false,
       error: {

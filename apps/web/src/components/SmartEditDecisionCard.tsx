@@ -2,6 +2,42 @@ import { Card, Image, Select, Space, Tag, Typography } from "antd";
 import type { MaterialClip, SmartEditDecision } from "../services/api";
 import { resolveAssetUrl } from "../services/api";
 
+function ClipPreview({ clip }: { clip: MaterialClip }) {
+  const url = resolveAssetUrl(clip.fileUrl);
+  if (!url) return null;
+
+  if (clip.type === "video_clip") {
+    // Add #t=startTime,endTime to seek to clip time range
+    const videoUrl = clip.startTime != null && clip.endTime != null
+      ? `${url}#t=${clip.startTime},${clip.endTime}`
+      : url;
+
+    return (
+      <video
+        width={96}
+        height={128}
+        src={videoUrl}
+        muted
+        loop
+        autoPlay
+        playsInline
+        style={{ objectFit: "cover", borderRadius: 8, background: "#05060a" }}
+      />
+    );
+  }
+
+  const thumbUrl = resolveAssetUrl(clip.thumbnailUrl ?? clip.fileUrl);
+  return (
+    <Image
+      width={96}
+      height={128}
+      src={thumbUrl}
+      alt={clip.summary}
+      style={{ objectFit: "cover", borderRadius: 8, background: "#05060a" }}
+    />
+  );
+}
+
 type Props = {
   decision: SmartEditDecision;
   clips: MaterialClip[];
@@ -27,7 +63,6 @@ function compactClipOptionLabel(clip: MaterialClip) {
 
 export function SmartEditDecisionCard({ decision, clips, replacing, onReplaceClip }: Props) {
   const clip = decision.clip;
-  const mediaUrl = resolveAssetUrl(clip?.thumbnailUrl ?? clip?.fileUrl);
 
   return (
     <Card className="surface">
@@ -51,15 +86,7 @@ export function SmartEditDecisionCard({ decision, clips, replacing, onReplaceCli
 
         {clip ? (
           <Space align="start" size={12} className="full-width">
-            {mediaUrl ? (
-              <Image
-                width={96}
-                height={128}
-                src={mediaUrl}
-                alt={clip.summary}
-                style={{ objectFit: "cover", borderRadius: 8, background: "#05060a" }}
-              />
-            ) : null}
+            <ClipPreview clip={clip} />
             <Space direction="vertical" size={6}>
               <Typography.Text>{clip.fileUrl.split("/").pop() ?? clip.id}</Typography.Text>
               <Space wrap>

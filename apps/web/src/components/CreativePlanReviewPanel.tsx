@@ -40,6 +40,7 @@ export function CreativePlanReviewPanel({ plan, productName, materials, initialM
   const [renderingSmartEdit, setRenderingSmartEdit] = useState(false);
   const [replacingSmartEditSceneId, setReplacingSmartEditSceneId] = useState<string>();
   const [smartEditError, setSmartEditError] = useState<string>();
+  const [withTts, setWithTts] = useState(true);
   const [error, setError] = useState<string>();
   const smartEditSectionRef = useRef<HTMLDivElement>(null);
 
@@ -218,7 +219,7 @@ export function CreativePlanReviewPanel({ plan, productName, materials, initialM
         nextPlan = await api.createSmartEditPlan(currentPlan.id);
         setSmartEditPlan(nextPlan);
       }
-      const task = await api.renderSmartClipEdit(currentPlan.id);
+      const task = await api.renderSmartClipEdit(currentPlan.id, { withTts, withBgm: false });
       message.success("智能剪辑任务已创建");
       onRender(task.id);
     } catch (err) {
@@ -404,6 +405,8 @@ export function CreativePlanReviewPanel({ plan, productName, materials, initialM
           rendering={renderingSmartEdit}
           replacingSceneId={replacingSmartEditSceneId}
           error={smartEditError}
+          withTts={withTts}
+          onTtsChange={setWithTts}
           onAnalyze={analyzeSmartClips}
           onRematch={rematchSmartEditPlan}
           onRender={renderSmartClipEdit}

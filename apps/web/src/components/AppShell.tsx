@@ -3,6 +3,7 @@ import {
   BulbOutlined,
   DashboardOutlined,
   FolderAddOutlined,
+  ScissorOutlined,
   VideoCameraOutlined,
 } from "@ant-design/icons";
 import { Button, Layout, Menu, Space, Tag, Typography } from "antd";
@@ -12,6 +13,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 const items = [
   { key: "/", icon: <DashboardOutlined />, label: "工作台" },
   { key: "/products/new", icon: <FolderAddOutlined />, label: "创建商品任务" },
+  { key: "/smart-edit", icon: <ScissorOutlined />, label: "智能素材剪辑" },
   { key: "/reference-videos", icon: <VideoCameraOutlined />, label: "参考视频库" },
   { key: "/inspiration-templates", icon: <BulbOutlined />, label: "灵感模板库" },
   { key: "/analytics", icon: <BarChartOutlined />, label: "数据看板" },
@@ -36,6 +38,9 @@ function getPageTitle(pathname: string): { subtitle: string; title: string } {
   }
   if (pathname.startsWith("/analytics")) {
     return { subtitle: "Analytics Dashboard", title: "数据看板" };
+  }
+  if (pathname.startsWith("/smart-edit")) {
+    return { subtitle: "Smart Clip Editing", title: "智能素材剪辑" };
   }
   if (pathname.startsWith("/products/new")) {
     return { subtitle: "Create Product", title: "创建商品任务" };

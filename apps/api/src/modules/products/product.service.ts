@@ -76,6 +76,21 @@ export const deleteProduct = async (id: string): Promise<boolean> => {
   if (!existing) return false;
 
   const deletedIds = await prisma.$transaction(async (tx) => {
+    // Check for active tasks inside transaction to prevent race condition
+    const activeTasks = await tx.generationTask.findMany({
+      where: {
+        productId: id,
+        status: { in: ['pending', 'running'] },
+      },
+      select: { id: true },
+    });
+
+    if (activeTasks.length > 0) {
+      const error = new Error('商品存在进行中的任务，无法删除') as Error & { code: string };
+      error.code = 'PRODUCT_HAS_ACTIVE_TASKS';
+      throw error;
+    }
+
     const plans = await tx.creativePlan.findMany({
       where: { productId: id },
       select: { id: true },

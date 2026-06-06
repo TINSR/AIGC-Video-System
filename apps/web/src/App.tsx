@@ -25,6 +25,9 @@ const ReferenceVideoLibraryPage = lazy(() =>
   import("./pages/ReferenceVideoLibraryPage").then((module) => ({ default: module.ReferenceVideoLibraryPage }))
 );
 const ReviewPage = lazy(() => import("./pages/ReviewPage").then((module) => ({ default: module.ReviewPage })));
+const SmartEditWorkspacePage = lazy(() =>
+  import("./pages/SmartEditWorkspacePage").then((module) => ({ default: module.SmartEditWorkspacePage }))
+);
 const TaskPage = lazy(() => import("./pages/TaskPage").then((module) => ({ default: module.TaskPage })));
 const VideoPage = lazy(() => import("./pages/VideoPage").then((module) => ({ default: module.VideoPage })));
 
@@ -44,6 +47,7 @@ const router = createBrowserRouter([
       { path: "creative-plans/:planId/review", element: lazyPage(<ReviewPage />) },
       { path: "tasks/:taskId", element: lazyPage(<TaskPage />) },
       { path: "videos/:videoId", element: lazyPage(<VideoPage />) },
+      { path: "smart-edit", element: lazyPage(<SmartEditWorkspacePage />) },
       { path: "reference-videos", element: lazyPage(<ReferenceVideoLibraryPage />) },
       { path: "reference-videos/:id", element: lazyPage(<ReferenceVideoDetailPage />) },
       { path: "inspiration-templates", element: lazyPage(<InspirationTemplateLibraryPage />) },

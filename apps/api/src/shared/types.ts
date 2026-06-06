@@ -324,6 +324,11 @@ export type GenerationTask = {
   type?: 'creative_strategy' | 'creative_plan' | 'render' | 'scene_render';
   resultId?: string;
   renderMode?: RenderMode;
+  renderOptions?: {
+    withSubtitle?: boolean;
+    withTts?: boolean;
+    withBgm?: boolean;
+  };
   createdAt: string;
   updatedAt: string;
 };

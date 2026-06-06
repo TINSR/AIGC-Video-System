@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import { isFfmpegFallbackAllowed, FFMPEG_FALLBACK_DISABLED_MESSAGE } from '../../config/ffmpegFallback';
 import { Seedance15Provider } from '../../providers/video/Seedance15Provider';
 import { FFmpegComposeProvider } from '../../providers/video/FFmpegComposeProvider';
+import { createTtsProvider } from '../../providers/tts/ttsProviders';
+import type { ITtsProvider } from '../../providers/tts/ITtsProvider';
 import { taskStore, planStore, taskMaterialsStore } from '../../memory-store';
 import { downloadVideoToOutputs } from '../../utils/videoDownload';
 import { enrichTaskOutputVideo } from '../../utils/outputVideoUrl';
@@ -34,9 +36,10 @@ const SMART_CLIP_STEP_MAP: Record<number, string> = {
   10: '读取方案与素材',
   25: '分析素材 clips',
   40: '匹配分镜',
-  55: '生成字幕',
-  70: 'FFmpeg 合成',
-  90: '导出 mp4',
+  50: '正在生成 AI 配音',
+  60: '准备字幕和音轨',
+  75: 'FFmpeg 智能剪辑合成',
+  90: '检查输出文件',
   100: '智能剪辑完成',
 };
 
@@ -59,12 +62,31 @@ export class RenderService {
   private ffmpegProvider: FFmpegComposeProvider;
   private creativePlanService: CreativePlanService;
   private smartEditService: SmartEditService;
+  private ttsProvider: ITtsProvider;
 
   constructor() {
     this.seedanceProvider = new Seedance15Provider();
     this.ffmpegProvider = new FFmpegComposeProvider();
     this.creativePlanService = new CreativePlanService();
     this.smartEditService = new SmartEditService();
+    this.ttsProvider = createTtsProvider();
+  }
+
+  private buildVoiceoverText(creativePlan: CreativePlan): string {
+    const maxLen = parseInt(process.env.TTS_MAX_TEXT_LENGTH || '500', 10);
+    const scenes = [...(creativePlan.scenes || [])].sort((a, b) => a.order - b.order);
+    const parts: string[] = [];
+    for (const scene of scenes) {
+      const text = (scene.voiceover || scene.subtitle || '').trim();
+      if (text) parts.push(text);
+    }
+    let joined = parts.join('。').replace(/\s+/g, ' ').replace(/[。！？]{2,}/g, '。');
+    if (joined.length > maxLen) {
+      const cut = joined.lastIndexOf('。', maxLen);
+      if (cut > 0) joined = joined.slice(0, cut + 1);
+      else joined = joined.slice(0, maxLen);
+    }
+    return joined;
   }
 
   private async failSeedanceWithoutFallback(task: GenerationTask, reason: string): Promise<void> {
@@ -180,6 +202,11 @@ export class RenderService {
       provider: 'smart_clip_edit',
       type: 'render',
       renderMode: 'smart_clip_edit',
+      renderOptions: {
+        withSubtitle: options.withSubtitle ?? true,
+        withTts: options.withTts ?? false,
+        withBgm: options.withBgm ?? false,
+      },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -205,6 +232,7 @@ export class RenderService {
     materials: Material[],
     options: SmartClipRenderOptions
   ): Promise<void> {
+    let voiceoverUrl: string | undefined;
     try {
       task.status = 'running';
       task.progress = 10;
@@ -239,13 +267,36 @@ export class RenderService {
       task.updatedAt = new Date().toISOString();
       await syncTask(task);
 
-      task.progress = 55;
-      task.currentStep = SMART_CLIP_STEP_MAP[55];
+      // TTS voiceover
       if (options.withTts) {
-        task.logs.push(makeLog('warn', 'TTS 暂未配置，跳过配音合成'));
+        task.progress = 50;
+        task.currentStep = SMART_CLIP_STEP_MAP[50];
+        task.updatedAt = new Date().toISOString();
+        await syncTask(task);
+
+        const voiceoverText = this.buildVoiceoverText(creativePlan);
+        if (voiceoverText.length > 0) {
+          task.logs.push(makeLog('info', `准备 AI 配音文本，共 ${voiceoverText.length} 个字符`));
+          try {
+            const ttsResult = await this.ttsProvider.synthesize(voiceoverText);
+            if (ttsResult && ttsResult.localFilePath) {
+              voiceoverUrl = ttsResult.localFilePath;
+              task.logs.push(makeLog('info', `AI 配音生成成功，时长约 ${ttsResult.duration} 秒`));
+            } else {
+              task.logs.push(makeLog('warn', 'AI 配音生成失败，自动降级为字幕版视频'));
+            }
+          } catch (err) {
+            task.logs.push(makeLog('warn', `AI 配音异常，自动降级为字幕版视频：${err instanceof Error ? err.message : err}`));
+          }
+        } else {
+          task.logs.push(makeLog('warn', '分镜无旁白文本，跳过 AI 配音'));
+        }
       } else {
-        task.logs.push(makeLog('info', '准备字幕烧录'));
+        task.logs.push(makeLog('info', '未开启 AI 配音，使用字幕版视频'));
       }
+
+      task.progress = 60;
+      task.currentStep = SMART_CLIP_STEP_MAP[60];
       task.updatedAt = new Date().toISOString();
       await syncTask(task);
 
@@ -259,8 +310,8 @@ export class RenderService {
         return;
       }
 
-      task.progress = 70;
-      task.currentStep = SMART_CLIP_STEP_MAP[70];
+      task.progress = 75;
+      task.currentStep = SMART_CLIP_STEP_MAP[75];
       task.logs.push(makeLog('info', `FFmpeg 可用（版本: ${ffmpegCheck.version}），开始智能剪辑合成`));
       task.updatedAt = new Date().toISOString();
       await syncTask(task);
@@ -282,6 +333,7 @@ export class RenderService {
         outputPath,
         withSubtitle: options.withSubtitle !== false,
         bgmUrl: options.withBgm ? process.env.SMART_EDIT_BGM_URL : undefined,
+        voiceoverUrl,
       });
 
       task.progress = 90;
@@ -305,6 +357,15 @@ export class RenderService {
       task.errorMessage = error instanceof Error ? error.message : 'SMART_EDIT_FAILED';
       task.logs.push(makeLog('error', `智能剪辑失败：${task.errorMessage}`));
     } finally {
+      // Clean up TTS temporary WAV file
+      if (voiceoverUrl && fs.existsSync(voiceoverUrl)) {
+        try {
+          fs.unlinkSync(voiceoverUrl);
+          task.logs.push(makeLog('info', '已清理 TTS 临时文件'));
+        } catch (cleanupErr) {
+          task.logs.push(makeLog('warn', `清理 TTS 临时文件失败：${cleanupErr instanceof Error ? cleanupErr.message : cleanupErr}`));
+        }
+      }
       task.updatedAt = new Date().toISOString();
       await syncTask(task);
     }
@@ -849,7 +910,7 @@ export class RenderService {
     await syncTask(task);
 
     const retryPromise = task.renderMode === 'smart_clip_edit'
-      ? this.executeSmartClipRenderTask(task, creativePlan, materials, {
+      ? this.executeSmartClipRenderTask(task, creativePlan, materials, task.renderOptions ?? {
           withSubtitle: true,
           withTts: false,
           withBgm: false,

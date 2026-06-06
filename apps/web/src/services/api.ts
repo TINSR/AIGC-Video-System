@@ -1056,16 +1056,19 @@ export const api = {
     mockSmartEditPlans.set(planId, nextPlan);
     return nextPlan;
   },
-  async renderSmartClipEdit(planId: string): Promise<GenerationTask> {
+  async renderSmartClipEdit(
+    planId: string,
+    options?: { withSubtitle?: boolean; withTts?: boolean; withBgm?: boolean }
+  ): Promise<GenerationTask> {
     if (!USE_MOCK) {
       try {
         return await request<GenerationTask>(`/creative-plans/${planId}/render`, {
           method: "POST",
           body: JSON.stringify({
             renderMode: "smart_clip_edit",
-            withSubtitle: true,
-            withTts: false,
-            withBgm: true
+            withSubtitle: options?.withSubtitle ?? true,
+            withTts: options?.withTts ?? false,
+            withBgm: options?.withBgm ?? false
           })
         });
       } catch (err) {

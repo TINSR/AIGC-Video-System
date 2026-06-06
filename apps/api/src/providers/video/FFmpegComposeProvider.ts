@@ -479,16 +479,21 @@ export class FFmpegComposeProvider implements IFFmpegComposeProvider {
       }
 
       if (bgmUrl || voiceoverUrl) {
+        // Get video duration to ensure audio matches video length
+        const videoDuration = await this.getVideoDuration(concatenatedOutput, clips);
+
         if (bgmUrl && voiceoverUrl) {
+          // Pad short audio with silence, then trim to video duration
           audioFilters =
-            '-filter_complex "[1:a]volume=0.3[a1];[2:a]volume=1.0[a2];[a1][a2]amix=inputs=2:duration=first[a]" -map "[a]"';
+            `-filter_complex "[1:a]apad,atrim=0:${videoDuration},asetpts=PTS-STARTPTS,volume=0.3[a1];[2:a]apad,atrim=0:${videoDuration},asetpts=PTS-STARTPTS,volume=1.0[a2];[a1][a2]amix=inputs=2:duration=longest,atrim=0:${videoDuration}[a]" -map "[a]"`;
         } else if (bgmUrl) {
-          audioFilters = '-filter_complex "[1:a]volume=0.5[a]" -map "[a]"';
+          audioFilters = `-filter_complex "[1:a]apad,atrim=0:${videoDuration},asetpts=PTS-STARTPTS,volume=0.5[a]" -map "[a]"`;
         } else if (voiceoverUrl) {
-          audioFilters = '-map 1:a';
+          audioFilters = `-filter_complex "[1:a]apad,atrim=0:${videoDuration},asetpts=PTS-STARTPTS[a]" -map "[a]"`;
         }
+        // Use -t to fix output duration to video length
         await execAsync(
-          `${this.quotedFFmpegPath} -i "${concatenatedOutput}" ${audioInputs} -map 0:v ${audioFilters} -c:v copy -c:a aac "${finalOutput}" -y`
+          `${this.quotedFFmpegPath} -i "${concatenatedOutput}" ${audioInputs} -map 0:v ${audioFilters} -c:v copy -c:a aac -t ${videoDuration} "${finalOutput}" -y`
         );
       } else {
         if (fs.existsSync(finalOutput)) {

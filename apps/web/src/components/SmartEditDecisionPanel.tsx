@@ -1,4 +1,4 @@
-import { Alert, Button, Empty, Space, Spin, Typography } from "antd";
+import { Alert, Button, Empty, Space, Spin, Switch, Typography } from "antd";
 import type { MaterialClip, SmartEditPlan } from "../services/api";
 import { SmartEditDecisionCard } from "./SmartEditDecisionCard";
 
@@ -11,6 +11,8 @@ type Props = {
   rendering?: boolean;
   replacingSceneId?: string;
   error?: string;
+  withTts: boolean;
+  onTtsChange: (checked: boolean) => void;
   onAnalyze: () => void;
   onRematch: () => void;
   onRender: () => void;
@@ -26,6 +28,8 @@ export function SmartEditDecisionPanel({
   rendering,
   replacingSceneId,
   error,
+  withTts,
+  onTtsChange,
   onAnalyze,
   onRematch,
   onRender,
@@ -58,13 +62,21 @@ export function SmartEditDecisionPanel({
           </Space>
         </div>
 
+        <Space align="center" size={12}>
+          <Switch checked={withTts} onChange={onTtsChange} disabled={busy} />
+          <Typography.Text>AI 配音</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            开启后将使用分镜旁白生成配音；服务不可用时自动降级为字幕版。
+          </Typography.Text>
+        </Space>
+
         {error ? <Alert type="warning" showIcon message="智能剪辑暂不可用" description={error} /> : null}
         {loading ? <Spin /> : null}
         {!loading && clips.length === 0 ? (
-          <Alert type="info" showIcon message="暂无素材切片，请先点击“分析素材”。" />
+          <Alert type="info" showIcon message='暂无素材切片，请先点击"分析素材"。' />
         ) : null}
         {!loading && clips.length > 0 && decisions.length === 0 ? (
-          <Empty description="已有素材切片，请点击“重新匹配”生成分镜匹配结果。" />
+          <Empty description='已有素材切片，请点击"重新匹配"生成分镜匹配结果。' />
         ) : null}
         {plan ? (
           <Alert
